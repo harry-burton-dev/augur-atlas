@@ -1,0 +1,29 @@
+{
+  "name": "@apps/atlas",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Data Atlas's service: the entity graph behind the gateway at /api/atlas.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp ../manifest.json dist/manifest.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "migrate": "node --experimental-strip-types src/migrate.ts"
+  },
+  "dependencies": {
+    "@augur/service-kit": "workspace:*",
+    "fastify": "^5.6.0",
+    "n3": "^2.13.12",
+    "pg": "^8.23.1",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/n3": "^1.26.6",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

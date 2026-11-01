@@ -1,0 +1,72 @@
+{
+  "id": "atlas",
+  "name": "Data Atlas",
+  "route": "/atlas",
+  "entry": "/apps/atlas/entry.js",
+  "version": "0.1.5",
+  "sdk": "^1.4.0",
+  "description": "The things your organisation knows about, and what is known of them",
+  "icon": "atlas",
+  "floors": [
+    "personal",
+    "team",
+    "org"
+  ],
+  "storage": {
+    "database": true
+  },
+  "scopes": [
+    "audit:write",
+    "people:read",
+    "events:publish",
+    "events:subscribe",
+    "models:use"
+  ],
+  "orbit": false,
+  "handles": [
+    "entity.open",
+    "entity.pick",
+    "entity.explain",
+    "entity.propose"
+  ],
+  "menu": [
+    {
+      "id": "atlas",
+      "label": "Atlas",
+      "icon": "structure",
+      "items": [
+        {
+          "id": "entities",
+          "label": "Everything here",
+          "icon": "list",
+          "path": "/entities",
+          "detail": "The entities you can see from this floor",
+          "keywords": "entities things ships people places organisations"
+        },
+        {
+          "id": "new",
+          "label": "Add an entity",
+          "icon": "plus",
+          "path": "/entities/new",
+          "keywords": "create new add thing"
+        },
+        {
+          "id": "triage",
+          "label": "Triage",
+          "icon": "inbox",
+          "path": "/triage",
+          "detail": "What’s proposed here, waiting for a lead",
+          "keywords": "triage proposals review mentions decide"
+        },
+        {
+          "id": "ontology",
+          "label": "Ontology",
+          "icon": "tag",
+          "path": "/ontology",
+          "detail": "The kinds of thing kept, and the packs they come from",
+          "keywords": "ontology kinds types links packs cco owl vocabulary studio"
+        }
+      ]
+    }
+  ]
+}
