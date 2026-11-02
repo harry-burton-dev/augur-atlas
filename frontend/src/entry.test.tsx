@@ -1,11 +1,14 @@
+// @vitest-environment happy-dom
 import { createEventBus, type MountContext, type Workspace } from '@augur/mfe-sdk';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MultiDirectedGraph } from 'graphology';
 import { entityLine, placeFor, pathFor, typeTree, whyShown, type Entity, type Ontology, type ProposalView, type Subgraph } from './api.js';
-import type { AtlasApp } from './atlas-app.js';
-import { kindsOffered } from './atlas-picker.js';
+import { kindsOffered } from './picker.js';
 import { foldsOf, hiddenNear, rings, syncGraph, widen } from './graph.js';
 import app, { addressFor, placeForIntent, proposalOffer } from './entry.js';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const floor: Workspace = { id: 't-mar', kind: 'team', name: 'Maritime desk', slug: 'maritime', path: [], role: 'member' };
 
@@ -96,19 +99,41 @@ const answering = (routes: Record<string, () => Response>) =>
     return route ? routes[route]() : new Response(null, { status: 404 });
   });
 
-const settle = async (el: HTMLElement) => {
-  for (let i = 0; i < 5; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-    await ((el.querySelector('atlas-app') ?? el.querySelector('atlas-picker') ?? el.querySelector('atlas-propose')) as AtlasApp | null)?.updateComplete;
-    await (el.querySelector('atlas-triage') as AtlasApp | null)?.updateComplete;
-    await (el.querySelector('atlas-ontology') as AtlasApp | null)?.updateComplete;
-    await (el.querySelector('atlas-used-by') as AtlasApp | null)?.updateComplete;
-  }
+/** Lets the service's answers land and React draw them. */
+const settle = async (rounds = 8) => {
+  for (let i = 0; i < rounds; i++) await act(async () => new Promise((r) => setTimeout(r, 5)));
 };
+const mounted = async (c: MountContext) => {
+  const el = document.body.appendChild(document.createElement('div'));
+  await act(async () => void (await app.mount(el, c)));
+  await settle();
+  return el;
+};
+const press = async (b: Element | null | undefined) => {
+  await act(async () => (b as HTMLElement).click());
+  await settle();
+};
+/** A button by its words, anywhere on the page: dialogs draw outside the app. */
+const button = (words: string, inside: ParentNode = document) => [...inside.querySelectorAll('button')].find((b) => b.textContent?.trim() === words);
+/** The sentence a control that can't be used gives for it. */
+const reasonOf = (b: Element | undefined) => document.getElementById(b?.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+const shut = (b: Element | undefined) => b?.getAttribute('aria-disabled') === 'true' || (b as HTMLButtonElement | undefined)?.disabled === true;
+/** A list's rows, as title and detail. */
+const rowsOf = (list: Element | null) =>
+  [...(list?.querySelectorAll('.quill-list-row') ?? [])].map((r) => ({ title: r.querySelector('.quill-list-text b')?.textContent, detail: r.querySelector('.quill-list-text span')?.textContent, disabled: r.hasAttribute('data-disabled-row') }));
+const pageTitle = (el: Element) => el.querySelector('.quill-page-head-title')?.textContent;
 
-afterEach(() => {
+let mounts: HTMLElement[] = [];
+afterEach(async () => {
+  for (const el of mounts) await act(async () => void (await app.unmount?.(el)));
+  mounts = [];
   document.body.innerHTML = '';
 });
+const open = async (c: MountContext) => {
+  const el = await mounted(c);
+  mounts.push(el);
+  return el;
+};
 
 describe('places', () => {
   it('reads and writes its own addresses', () => {
@@ -160,13 +185,10 @@ describe('entity intents', () => {
       '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Org', 'Maritime desk'] }),
     });
     const respond = vi.fn();
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { purpose: 'Bind to this intent', types: ['vessel'] } }, reply: { respond, cancel: vi.fn() } }));
-    await settle(el);
-    expect(el.querySelector('ui-heading')!.getAttribute('heading')).toBe('Bind to this intent');
+    const el = await open(ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { purpose: 'Bind to this intent', types: ['vessel'] } }, reply: { respond, cancel: vi.fn() } }));
+    expect(el.querySelector('.augur-title')!.textContent).toBe('Bind to this intent');
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('type=vessel'), expect.anything());
-    const list = el.querySelector('ui-list')!;
-    list.dispatchEvent(new CustomEvent('ui-open', { detail: { item: { id: TERN.id } } }));
+    await press(el.querySelector('.quill-list-row'));
     expect(respond).toHaveBeenCalledWith({ kind: 'entity', id: TERN.id, type: 'vessel', label: 'Northern Tern' });
   });
 
@@ -177,17 +199,13 @@ describe('entity intents', () => {
       '/api/atlas/v1/entities': () => Response.json({ entities: [TERN, PORT], total: 2, floors: ['org'], seeing: ['Org'] }),
     });
     const respond = vi.fn();
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { multiple: true } }, reply: { respond, cancel: vi.fn() } }));
-    await settle(el);
-    const pick = () => [...el.querySelectorAll('ui-button')].find((b) => b.textContent?.startsWith('Pick')) as HTMLElement & { disabled: boolean };
-    expect(pick().disabled).toBe(true);
+    const el = await open(ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { multiple: true } }, reply: { respond, cancel: vi.fn() } }));
+    const pick = () => [...el.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Pick'));
+    expect(shut(pick())).toBe(true);
     expect(el.textContent).toMatch(/Pick at least one to go on/);
-    const list = el.querySelector('ui-list')!;
-    for (const id of [TERN.id, PORT.id]) list.dispatchEvent(new CustomEvent('ui-open', { detail: { item: { id } } }));
-    await settle(el);
-    expect(pick().textContent).toBe('Pick these 2');
-    pick().click();
+    for (const row of [...el.querySelectorAll('.quill-list-row')]) await press(row);
+    expect(pick()!.textContent).toBe('Pick these 2');
+    await press(pick());
     expect(respond).toHaveBeenCalledWith([expect.objectContaining({ id: TERN.id }), expect.objectContaining({ id: PORT.id })]);
   });
 });
@@ -198,56 +216,41 @@ describe('atlas', () => {
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
       '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Org', 'Maritime desk'] }),
     });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch));
-    await settle(el);
-    expect(el.querySelector('ui-page-head')!.getAttribute('summary')).toMatch(/floors above it shows: Org, Maritime desk/);
-    const list = el.querySelector('ui-list') as HTMLElement & { items: { title: string; detail: string }[] };
-    expect(list.items).toEqual([expect.objectContaining({ title: 'Northern Tern', detail: 'Vessel · IMO number 9400117 · Kept on Maritime desk' })]);
-    await app.unmount!(el);
-    expect(el.querySelector('atlas-app')).toBeNull();
+    const el = await mounted(ctx(fetch));
+    expect(el.querySelector('.quill-page-head-summary')!.textContent).toMatch(/floors above it shows: Org, Maritime desk/);
+    expect(rowsOf(el)).toEqual([expect.objectContaining({ title: 'Northern Tern', detail: 'Vessel · IMO number 9400117 · Kept on Maritime desk' })]);
+    await act(async () => void (await app.unmount!(el)));
+    expect(el.textContent).toBe('');
   });
 
+  const ENTITY_ROUTES = {
+    '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
+    '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
+    '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], documents: [] }),
+    '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
+  };
+
   it('shows an entity, with what can’t be done and why, instead of hiding it', async () => {
-    const fetch = answering({
-      '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
-      '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
-      '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
-    });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/entities/ent_01'));
-    await settle(el);
-    expect(el.querySelector('ui-page-head')!.getAttribute('heading')).toBe('Northern Tern');
-    const edit = (el.querySelector('ui-page-head') as HTMLElement & { actions: { label: string; disabled?: boolean; reason?: string }[] }).actions.find((a) => a.label === 'Edit')!;
-    expect(edit.disabled).toBe(true);
-    expect(edit.reason).toMatch(/kept on the org floor: go there/);
-    await settle(el);
-    const [facts, links, observations] = [...el.querySelectorAll('atlas-knowledge ui-list')] as (HTMLElement & { items: { title: string; detail: string }[] })[];
-    expect(facts.items).toEqual([expect.objectContaining({ title: 'Flag state: Liberia', detail: 'Since 1 Sep 2026 · Kept on Operations · Disputed' })]);
-    expect(links.items).toEqual([expect.objectContaining({ title: 'Operated by an entity you can’t see from here' })]);
-    expect(observations.items).toEqual([expect.objectContaining({ title: 'Flag state: Liberia', detail: 'Seen 1 Sep 2026 · From Port report · B2 · On Maritime desk · Raised to Operations' })]);
+    const el = await open(ctx(answering(ENTITY_ROUTES), '/entities/ent_01'));
+    expect(pageTitle(el)).toBe('Northern Tern');
+    const edit = button('Edit', el);
+    expect(shut(edit)).toBe(true);
+    expect(reasonOf(edit)).toMatch(/kept on the org floor: go there/);
+    expect(rowsOf(el.querySelector('.atlas-facts'))).toEqual([expect.objectContaining({ title: 'Flag state: Liberia', detail: 'Since 1 Sep 2026 · Kept on Operations · Disputed' })]);
+    expect(rowsOf(el.querySelector('.atlas-links-list'))).toEqual([expect.objectContaining({ title: 'Operated by an entity you can’t see from here' })]);
+    expect(rowsOf(el.querySelector('.atlas-observations'))).toEqual([expect.objectContaining({ title: 'Flag state: Liberia', detail: 'Seen 1 Sep 2026 · From Port report · B2 · On Maritime desk · Raised to Operations' })]);
     expect(el.textContent).toMatch(/Only this floor’s leads accept/);
   });
 
   it('opens a fact with what can’t be done to it and why', async () => {
-    const fetch = answering({
-      '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
-      '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
-      '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
-    });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/entities/ent_01'));
-    await settle(el);
-    await settle(el);
-    el.querySelector('atlas-knowledge ui-list')!.dispatchEvent(new CustomEvent('ui-open', { detail: { item: { id: 'fct_1' } } }));
-    await settle(el);
-    await (el.querySelector('atlas-knowledge') as HTMLElement & { updateComplete: Promise<unknown> }).updateComplete;
-    const dialog = el.querySelector('atlas-knowledge ui-dialog')!;
-    expect(dialog.getAttribute('heading')).toBe('Flag state: Liberia');
+    const el = await open(ctx(answering(ENTITY_ROUTES), '/entities/ent_01'));
+    await press(el.querySelector('.atlas-facts .quill-list-row'));
+    const dialog = document.querySelector('.augur-dialog')!;
+    expect(dialog.querySelector('.augur-title')!.textContent).toBe('Flag state: Liberia');
     expect(dialog.textContent).toMatch(/Disputed from Maritime desk/);
-    const end = [...dialog.querySelectorAll('ui-button')].find((b) => b.textContent === 'It has ended') as HTMLElement & { disabled: boolean };
-    expect(end.disabled).toBe(true);
-    expect(end.getAttribute('reason')).toMatch(/kept on Operations: its leads end or withdraw it there/);
+    const end = button('It has ended', dialog);
+    expect(shut(end)).toBe(true);
+    expect(reasonOf(end)).toMatch(/kept on Operations: its leads end or withdraw it there/);
   });
 
   it('says why an entity can’t be seen from here', async () => {
@@ -255,12 +258,9 @@ describe('atlas', () => {
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
       '/api/atlas/v1/entities/ent_02': () => Response.json({ error: 'unseen', reason: 'kept', message: 'It’s kept on the Finance floor. Ask one of its leads if you need it.' }, { status: 403 }),
     });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/entities/ent_02'));
-    await settle(el);
-    const state = el.querySelector('ui-state')!;
-    expect(state.getAttribute('heading')).toBe('You can’t see this from here');
-    expect(state.getAttribute('body')).toMatch(/Finance floor/);
+    const el = await open(ctx(fetch, '/entities/ent_02'));
+    expect(el.querySelector('.quill-state-title')!.textContent).toBe('You can’t see this from here');
+    expect(el.querySelector('.quill-state-body')!.textContent).toMatch(/Finance floor/);
   });
 });
 
@@ -327,27 +327,20 @@ describe('explorer', () => {
       }
       return new Response(null, { status: 404 });
     });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/explore/ent_01'));
-    await settle(el);
-    const explorer = el.querySelector('atlas-explorer') as HTMLElement & { updateComplete: Promise<unknown> };
-    await explorer.updateComplete;
+    const el = await open(ctx(fetch, '/explore/ent_01'));
     expect(bodies[0]).toEqual({ seeds: [{ id: 'ent_01' }], depth: 1, limitPerNode: 12 });
     expect(el.textContent).toMatch(/can’t draw the graph \(it needs WebGL\), so it shows as a list/);
-    expect(el.querySelector('ui-page-head')!.getAttribute('heading')).toBe('Around Northern Tern');
+    expect(pageTitle(el)).toBe('Around Northern Tern');
     expect([...el.querySelectorAll('.atlas-ring')].map((h) => h.textContent)).toEqual(['Centre', 'Ring 1']);
-    const fold = [...el.querySelectorAll('.atlas-fold')].find((b) => b.textContent === '+3 operates') as HTMLButtonElement;
-    fold.click();
-    await settle(el);
-    await explorer.updateComplete;
+    await press([...el.querySelectorAll('.atlas-fold')].find((b) => b.textContent === '+3 operates'));
     expect(bodies[1]).toEqual({ seeds: [{ id: 'ent_02' }], depth: 1, relations: ['operated-by'], limitPerNode: 200 });
     expect([...el.querySelectorAll('.atlas-ring')].map((h) => h.textContent)).toEqual(['Centre', 'Ring 1', 'Ring 2']);
     // What can't be seen says why, beside what it's linked to.
-    ([...el.querySelectorAll('.atlas-fold')].find((b) => b.textContent === '1 hidden') as HTMLButtonElement).click();
-    await explorer.updateComplete;
+    await press([...el.querySelectorAll('.atlas-fold')].find((b) => b.textContent === '1 hidden'));
     expect(el.querySelector('.atlas-why')!.textContent).toMatch(/Finance floor/);
   });
 });
+
 
 const PROPOSAL: ProposalView = {
   id: 'prp_1',
@@ -384,12 +377,9 @@ describe('triage', () => {
         Response.json({ floorName: 'Maritime desk', decide: false, why: 'Only this floor’s leads decide what proposals name.', proposals: [{ ...PROPOSAL, items: 1, decided: 0 }] }),
       '/api/atlas/v1/proposals?state=closed': () => Response.json({ floorName: 'Maritime desk', decide: false, proposals: [] }),
     });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/triage'));
-    await settle(el);
+    const el = await open(ctx(fetch, '/triage'));
     expect(el.textContent).toContain('Only this floor’s leads decide');
-    const list = el.querySelector('atlas-triage ui-list') as HTMLElement & { items: { title: string; detail: string }[] };
-    expect(list.items).toEqual([expect.objectContaining({ title: 'Port report', detail: '0 of 1 decided · proposed by someone on this floor · version 2' })]);
+    expect(rowsOf(el.querySelector('.atlas-triage'))).toEqual([expect.objectContaining({ title: 'Port report', detail: '0 of 1 decided · proposed by someone on this floor · version 2' })]);
   });
 
   it('shows a mention in its passage with what it might be, and links it to the one chosen', async () => {
@@ -404,20 +394,16 @@ describe('triage', () => {
       return new Response(null, { status: 404 });
     });
     const raise = vi.fn();
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/triage/prp_1', { raise }));
-    await settle(el);
+    const el = await open(ctx(fetch, '/triage/prp_1', { raise }));
     expect(el.querySelector('.atlas-context mark')!.textContent).toBe('N. Tern');
-    const button = (text: string) => [...el.querySelectorAll('ui-button')].find((b) => b.textContent?.trim() === text) as HTMLElement & { disabled: boolean };
     // Finish waits until everything is decided, and the page says so.
-    expect(button('Finish').disabled).toBe(true);
-    expect(button('Finish').getAttribute('reason')).toContain('Decide every mention and observation');
-    button('It’s Northern Tern').click();
-    await settle(el);
+    expect(shut(button('Finish', el))).toBe(true);
+    expect(reasonOf(button('Finish', el))).toContain('Decide every mention and observation');
+    await press(button('It’s Northern Tern', el));
     expect(decided).toEqual({ as: 'link', entity: 'ent_01' });
-    expect(el.querySelector<HTMLElementTagNameMap['ui-ref']>('.atlas-outcome ui-ref')!.ref.label).toBe('Northern Tern');
-    expect(button('Finish').disabled).toBe(false);
-    button('Open the source').click();
+    expect(el.querySelector('.atlas-outcome .quill-ref-name')!.textContent).toBe('Northern Tern');
+    expect(shut(button('Finish', el))).toBe(false);
+    await press(button('Open the source', el));
     expect(raise).toHaveBeenCalledWith({ type: 'document.open', payload: { app: 'folio', id: 'd-1', version: '2', title: 'Port report' } });
   });
 
@@ -437,14 +423,11 @@ describe('triage', () => {
       if (path.startsWith('/api/atlas/v1/proposals/prp_1')) return Response.json(matched);
       return new Response(null, { status: 404 });
     });
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/triage/prp_1'));
-    await settle(el);
+    const el = await open(ctx(fetch, '/triage/prp_1'));
     expect(el.querySelector('.atlas-matching')!.textContent).toMatch(/^Matched by identity keys, names and names spelt nearly alike, .+\. Matching by meaning is off: Models are turned off/);
     expect(el.textContent).toContain('It’s Northern Tern');
     expect(el.querySelector('.atlas-matches .atlas-note')!.textContent).toBe('spelt alike · Maritime desk');
-    [...el.querySelectorAll('ui-button')].find((b) => b.textContent?.trim() === 'Look again')!.click();
-    await settle(el);
+    await press(button('Look again', el));
     expect(looked).toBe(1);
     expect(el.querySelector('.atlas-matching')!.textContent).toMatch(/^Matched by identity keys, names, names spelt nearly alike and meaning/);
   });
@@ -459,17 +442,14 @@ describe('triage', () => {
       }
       return new Response(null, { status: 404 });
     });
-    const offer = { source: { app: 'folio', id: 'd-1', version: '2', title: 'Port report' }, anchor: 'b2', text: 'N. Tern', context: 'The N. Tern left Rotterdam on Monday.' };
+    const offer = { source: { app: 'folio', id: 'd-1', version: '2', title: 'Port report' }, anchor: 'b2', text: 'N. Tern', context: 'The N. Tern left Rotterdam on Monday.', type: 'vessel' };
     expect(proposalOffer({ type: 'entity.propose', payload: offer })).toEqual(offer);
     expect(proposalOffer({ type: 'entity.propose', payload: { text: 'x' } })).toBeUndefined();
     const respond = vi.fn();
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(fetch, '/', { intent: { type: 'entity.propose', payload: offer }, reply: { respond, cancel: vi.fn() } }));
-    await settle(el);
-    expect(el.querySelector('ui-heading')!.getAttribute('summary')).toContain('It goes to Maritime desk’s Triage');
-    (el.querySelector('atlas-propose ui-select') as HTMLElement).dispatchEvent(new CustomEvent('ui-change', { detail: { value: 'vessel' } }));
-    [...el.querySelectorAll('ui-button')].find((b) => b.textContent?.includes('Send to Triage'))!.click();
-    await settle(el);
+    const el = await open(ctx(fetch, '/', { intent: { type: 'entity.propose', payload: offer }, reply: { respond, cancel: vi.fn() } }));
+    expect(el.querySelector('.augur-summary')!.textContent).toContain('It goes to Maritime desk’s Triage');
+    // The kind the offer names is chosen to start with.
+    await press(button('Send to Triage', el));
     expect(sent).toEqual({
       source: { kind: 'document', document: offer.source, anchor: 'b2' },
       mentions: [{ key: 'm1', text: 'N. Tern', type: 'vessel', anchor: 'b2', context: offer.context }],
@@ -480,7 +460,7 @@ describe('triage', () => {
   it('cancels an offer it can’t read', async () => {
     const cancel = vi.fn();
     const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(vi.fn(), '/', { intent: { type: 'entity.propose', payload: { text: '' } }, reply: { respond: vi.fn(), cancel } }));
+    await act(async () => void (await app.mount(el, ctx(vi.fn(), '/', { intent: { type: 'entity.propose', payload: { text: '' } }, reply: { respond: vi.fn(), cancel } }))));
     expect(cancel).toHaveBeenCalled();
   });
 });
@@ -497,7 +477,7 @@ describe('ontology', () => {
       '/api/atlas/v1/ontology/candidates': () => Response.json({ govern: false, why: PACKS.why, waiting: 2, candidates: [] }),
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
     });
-  const tab = (el: HTMLElement, word: string) => [...el.querySelectorAll<HTMLElement>('atlas-ontology .atlas-tabs ui-button')].find((b) => b.textContent?.startsWith(word))!;
+  const tab = (el: HTMLElement, word: string) => [...el.querySelectorAll('.atlas-tabs button')].find((b) => b.textContent?.startsWith(word));
 
   it('reads and writes its address', () => {
     expect(placeFor('/ontology')).toEqual({ page: 'ontology' });
@@ -505,32 +485,24 @@ describe('ontology', () => {
   });
 
   it('shows everyone the kinds and where they come from, saying who can change them, and how many words wait', async () => {
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(answer(), '/ontology'));
-    await settle(el);
+    const el = await open(ctx(answer(), '/ontology'));
     expect(el.textContent).toContain('Only admins change the ontology');
     expect(el.textContent).toContain('CCO · Watercraft');
     expect(el.textContent).toContain('IMO number (says which one), Flag state (through facts)');
-    const add = [...el.querySelectorAll<HTMLElement & { disabled: boolean }>('atlas-ontology ui-button')].find((b) => b.textContent === 'Add a kind')!;
-    expect(add.disabled).toBe(true);
-    expect(add.getAttribute('reason')).toContain('Only admins');
-    tab(el, 'Asked for').click();
-    await settle(el);
+    const add = button('Add a kind', el);
+    expect(shut(add)).toBe(true);
+    expect(reasonOf(add)).toContain('Only admins');
+    await press(tab(el, 'Asked for'));
     expect(el.textContent).toContain('2 words that sources asked for wait for an admin');
   });
 
   it('opens a pack, showing what’s kept and offering the rest to admins only', async () => {
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(answer(), '/ontology'));
-    await settle(el);
-    tab(el, 'Packs').click();
-    await settle(el);
+    const el = await open(ctx(answer(), '/ontology'));
+    await press(tab(el, 'Packs'));
     expect(el.textContent).toContain('Version 1.5 · BSD-3-Clause · 21 terms · comes with Data Atlas');
-    [...el.querySelectorAll<HTMLElement>('atlas-ontology ui-button')].find((b) => b.textContent === 'Open')!.click();
-    await settle(el);
-    expect((el.querySelector('atlas-ontology ui-tag') as HTMLElement & { label: string }).label).toBe('Kept as Vessel');
-    const adopt = [...el.querySelectorAll<HTMLElement & { disabled: boolean }>('atlas-ontology ui-button')].find((b) => b.textContent === 'Adopt…')!;
-    expect(adopt.disabled).toBe(true);
+    await press(button('Open', el));
+    expect(el.querySelector('.atlas-ontology .quill-tag')!.textContent).toBe('Kept as Vessel');
+    expect(shut(button('Adopt…', el))).toBe(true);
   });
 });
 
@@ -550,30 +522,22 @@ describe('used by', () => {
     '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
     '/api/mandate/v1/refs/resolve': mandate,
   });
-  const lists = (el: HTMLElement) => [...el.querySelectorAll('atlas-used-by ui-list')] as (HTMLElement & { items: { id: string; title: string; detail: string; disabled?: boolean }[] })[];
 
   it('names intents through Mandate as the person, keeps the ones they can’t open in sight, and opens the rest', async () => {
     const raise = vi.fn();
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(answering(routes(() => Response.json({ refs: [{ id: 'int_1', label: 'Operation Alpha', canOpen: true }, { id: 'int_2', canOpen: false }] }))), '/entities/ent_01', { raise }));
-    await settle(el);
-    await settle(el);
-    const [intents, documents] = lists(el);
-    expect(intents.items).toEqual([
-      expect.objectContaining({ id: 'int_1', title: 'Operation Alpha', detail: expect.stringMatching(/^Intent · its subject · bound/) }),
-      expect.objectContaining({ id: 'int_2', title: 'An intent you can’t open', detail: expect.stringContaining('kept on Ops planning, ask its lead'), disabled: true }),
+    const el = await open(ctx(answering(routes(() => Response.json({ refs: [{ id: 'int_1', label: 'Operation Alpha', canOpen: true }, { id: 'int_2', canOpen: false }] }))), '/entities/ent_01', { raise }));
+    expect(rowsOf(el.querySelector('.atlas-used-intents'))).toEqual([
+      expect.objectContaining({ title: 'Operation Alpha', detail: expect.stringMatching(/^Intent · its subject · bound/) }),
+      expect.objectContaining({ title: 'An intent you can’t open', detail: expect.stringContaining('kept on Ops planning, ask its lead'), disabled: true }),
     ]);
-    expect(documents.items[0]).toMatchObject({ title: 'Port report', detail: expect.stringContaining('2 observations from it · since withdrawn') });
+    expect(rowsOf(el.querySelector('.atlas-used-documents'))[0]).toMatchObject({ title: 'Port report', detail: expect.stringContaining('2 observations from it · since withdrawn') });
     expect(el.textContent).toContain('It stays, with no current source.');
-    intents.dispatchEvent(new CustomEvent('ui-open', { detail: { item: intents.items[0] } }));
+    await press(el.querySelector('.atlas-used-intents .quill-list-row'));
     expect(raise).toHaveBeenCalledWith({ type: 'aim.open', payload: { id: 'int_1' } });
   });
 
   it('says how many intents use it when Mandate can’t be asked', async () => {
-    const el = document.body.appendChild(document.createElement('div'));
-    await app.mount(el, ctx(answering(routes(() => new Response(null, { status: 403 }))), '/entities/ent_01'));
-    await settle(el);
-    await settle(el);
+    const el = await open(ctx(answering(routes(() => new Response(null, { status: 403 }))), '/entities/ent_01'));
     expect(el.textContent).toContain('2 intents use it. Mandate isn’t open to you on this floor, so the intents can’t be named.');
   });
 });

@@ -1,0 +1,83 @@
+@import 'tailwindcss/utilities' layer(utilities);
+@import '@augur/app-kit/theme.css';
+@source '.';
+
+/*
+ * Data Atlas's own look, from the kit's tokens only. The frame, lists,
+ * dialogs and controls are Quill's; this is what's left: the filters, the
+ * cards in Triage, the ontology's rows and the explorer's three columns.
+ */
+.atlas-app, .atlas-over { display: block; color: var(--ink); font-family: var(--font-sans); }
+.atlas-over { padding: var(--space-6); }
+.atlas-note { margin: 0; font-size: var(--type-small); line-height: var(--leading-small); color: var(--ink-muted); }
+.atlas-refused { color: var(--danger); }
+.atlas-retired { color: var(--ink); }
+.atlas-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.atlas-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.atlas-end { justify-content: flex-end; }
+.atlas-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.atlas-filters, .atlas-find { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--space-4); }
+.atlas-section, .atlas-knowledge, .atlas-triage, .atlas-ontology, .atlas-explorer, .atlas-picker, .atlas-propose, .atlas-panel-body { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+.atlas-picker { min-width: min(40rem, 100%); }
+.atlas-propose { min-width: min(36rem, 100%); }
+.atlas-section-title { margin: 0 0 var(--space-3); font-size: var(--type-label); line-height: var(--leading-label); font-weight: 400; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--ink-muted); }
+.atlas-words { margin: 0; font-size: var(--type-lead); }
+.atlas-context { margin: 0; padding-left: var(--space-3); border-left: 2px solid var(--hairline-strong); color: var(--ink-muted); }
+.atlas-context mark { background: none; color: var(--ink); text-decoration: underline; text-decoration-color: var(--green); text-underline-offset: 3px; }
+
+/* What's known: the two clocks, and a dispute beside its fact. */
+.atlas-clocks { display: grid; grid-template-columns: repeat(2, minmax(0, 14rem)) 1fr; gap: var(--space-4); align-items: end; }
+.atlas-dispute { display: flex; gap: var(--space-3); align-items: baseline; justify-content: space-between; border-left: 2px solid var(--green); padding-left: var(--space-3); }
+.atlas-dispute p { margin: 0; }
+
+/* Triage: one card per thing a proposal names or says. */
+.atlas-cards, .atlas-terms, .atlas-matches { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
+.atlas-matches { gap: var(--space-2); }
+.atlas-matching { margin-bottom: var(--space-3); }
+.atlas-card { background: var(--surface-pane); border-radius: var(--radius-card); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.atlas-said { margin: 0; }
+.atlas-said strong { font-weight: 400; font-size: var(--type-lead); }
+.atlas-outcome { margin: 0; color: var(--ink); }
+.atlas-make { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: var(--space-3); align-items: end; }
+
+/* The ontology: tabs, then a row per kind, link, pack or version. */
+.atlas-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--hairline); padding-bottom: var(--space-2); }
+.atlas-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.atlas-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
+.atlas-what { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.atlas-name { color: var(--ink); }
+.atlas-version { font-variant-numeric: tabular-nums; color: var(--ink-muted); min-width: 2ch; text-align: right; }
+
+/* The explorer: what to show, the graph or its list, and what's selected. */
+.atlas-explore { display: grid; grid-template-columns: 15rem minmax(0, 1fr) 18rem; gap: var(--space-5); align-items: start; }
+.atlas-filters-pane, .atlas-panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.atlas-panel { background: var(--surface-pane); border-radius: var(--radius-card); padding: var(--space-4); }
+.atlas-stage { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.atlas-stage-bar { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; min-height: var(--space-6); }
+.atlas-graph-canvas { height: min(70vh, 40rem); min-height: 24rem; background: var(--surface-inset); border-radius: var(--radius-card); }
+.atlas-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; font-size: var(--type-small); color: var(--ink-muted); }
+.atlas-legend li { display: flex; align-items: center; gap: var(--space-2); }
+.atlas-dot { width: 10px; height: 10px; border-radius: var(--radius-pill); display: inline-block; }
+.atlas-dot-small { width: 6px; height: 6px; }
+.atlas-line { width: 16px; height: 2px; display: inline-block; }
+.atlas-links, .atlas-why, .atlas-rings ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.atlas-why li { font-size: var(--type-small); }
+.atlas-relation { color: var(--ink-muted); font-size: var(--type-small); margin-right: var(--space-2); }
+.atlas-disputed { color: var(--warning); font-size: var(--type-small); margin-left: var(--space-2); }
+.atlas-link { background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; cursor: pointer; }
+.atlas-link:focus-visible, .atlas-fold:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.atlas-chosen { color: var(--green); }
+.atlas-fold { background: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); padding: 0 var(--space-2); margin-left: var(--space-2); color: var(--ink); font: inherit; font-size: var(--type-small); cursor: pointer; }
+.atlas-fold:disabled { color: var(--ink-muted); cursor: default; }
+.atlas-rings { display: flex; flex-direction: column; gap: var(--space-4); }
+.atlas-rings li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
+.atlas-ring { margin: 0 0 var(--space-2); font-size: var(--type-label); line-height: var(--leading-label); font-weight: 400; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--ink-muted); }
+
+@media (max-width: 1100px) {
+  .atlas-explore { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .atlas-filters, .atlas-find, .atlas-clocks, .atlas-make { grid-template-columns: minmax(0, 1fr); }
+  .atlas-row { grid-template-columns: auto minmax(0, 1fr); }
+  .atlas-row > :last-child:not(.atlas-what) { grid-column: 2; }
+}
