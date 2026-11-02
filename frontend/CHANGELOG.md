@@ -1,5 +1,24 @@
 # @apps/atlas-frontend
 
+## 0.2.0
+
+### Minor Changes
+
+- ebd0cfb: Data Atlas is on React and Quill (PER-243): the list, an entity with what's known and what uses it, the explorer, Triage, the ontology, and its answers to `entity.pick` and `entity.propose`, with the same words and limits. It no longer uses the Lit kit, and it now has the rail every app has: Everything here, Triage and Ontology.
+
+### Patch Changes
+
+- Updated dependencies [527a413]
+- Updated dependencies [f8e9b46]
+- Updated dependencies [da54ae3]
+- Updated dependencies [7c8027d]
+- Updated dependencies [d500567]
+- Updated dependencies [a8854e2]
+- Updated dependencies [fccb126]
+- Updated dependencies [d64d724]
+  - @augur/app-kit@0.2.0
+  - @augur/mfe-sdk@1.10.0
+
 ## 0.1.5
 
 ### Patch Changes

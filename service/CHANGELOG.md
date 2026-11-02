@@ -1,5 +1,13 @@
 # @apps/atlas
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [137791c]
+- Updated dependencies [2021f8a]
+  - @augur/service-kit@0.11.0
+
 ## 0.1.1
 
 ### Patch Changes
