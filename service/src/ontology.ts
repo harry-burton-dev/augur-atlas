@@ -225,7 +225,10 @@ export const withSubtypes = (ontology: Ontology, type: string) => {
   const found = new Set([type]);
   for (let grew = true; grew; ) {
     grew = false;
-    for (const t of ontology.types) if (t.parent && found.has(t.parent) && !found.has(t.key)) found.add(t.key), (grew = true);
+    for (const t of ontology.types) if (t.parent && found.has(t.parent) && !found.has(t.key)) {
+      found.add(t.key);
+      grew = true;
+    }
   }
   return [...found];
 };

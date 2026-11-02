@@ -63,7 +63,7 @@ export const packFromTurtle = (turtle: string, about: Omit<Pack, 'terms'>): Pack
   try {
     quads = new Parser().parse(turtle);
   } catch (err) {
-    throw new Error(`It isn’t Turtle that can be read: ${(err as Error).message}`);
+    throw new Error(`It isn’t Turtle that can be read: ${(err as Error).message}`, { cause: err });
   }
   const of = (s: string, p: string) => quads.filter((q) => q.subject.value === s && q.predicate.value === p);
   const named = (q: Quad) => q.object.termType === 'NamedNode';

@@ -6,7 +6,7 @@ import './atlas-knowledge.js';
 import './atlas-ontology.js';
 import './atlas-triage.js';
 import './atlas-used-by.js';
-import { AtlasError, onEntity, entityLine, pathFor, typeTree, whyShown, type AtlasApi, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
+import { AtlasError, onEntity, entityLine, typeTree, whyShown, type AtlasApi, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
 
 type Dialog = 'new' | 'edit' | 'retire';
 

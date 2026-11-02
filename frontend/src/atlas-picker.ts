@@ -13,7 +13,10 @@ export const kindsOffered = (ontology: Ontology, asked: readonly string[]) => {
   const keep = new Set(asked.filter((a) => ontology.types.some((t) => t.key === a)));
   for (let grew = true; grew; ) {
     grew = false;
-    for (const t of ontology.types) if (t.parent && keep.has(t.parent) && !keep.has(t.key)) keep.add(t.key), (grew = true);
+    for (const t of ontology.types) if (t.parent && keep.has(t.parent) && !keep.has(t.key)) {
+      keep.add(t.key);
+      grew = true;
+    }
   }
   return tree.filter((t) => keep.has(t.type.key));
 };

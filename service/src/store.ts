@@ -1502,7 +1502,7 @@ export class PgAtlasStore {
       await client.query('rollback');
       // Two people adding the same key at once: the second hears who has it, as if they'd been second all along.
       if ((err as { code?: string }).code === '23505' && (err as { constraint?: string }).constraint === 'entity_keys_type_key_value_key') {
-        throw new Error('That identity key was just given to another entity. Try again to see which.');
+        throw new Error('That identity key was just given to another entity. Try again to see which.', { cause: err });
       }
       throw err;
     } finally {

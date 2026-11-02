@@ -28,7 +28,6 @@ const people: People = {
 const on = (id: string, workspace: CallerWorkspace): Caller => ({ id, name: id, departments: [], roles: [], workspace });
 const team = (id: string, role: CallerWorkspace['role'] = 'member'): CallerWorkspace => ({ id, kind: 'team', role });
 const ORG: CallerWorkspace = { id: 'w-org', kind: 'org', role: 'member' };
-const ORG_LEAD: CallerWorkspace = { ...ORG, role: 'lead' };
 
 // Sam as a member and as a lead of the Maritime desk; Ana leading Operations.
 const SAM = on('sam', team('t-mar'));
