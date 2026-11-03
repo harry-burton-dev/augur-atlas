@@ -13,10 +13,15 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      # Reads AUGUR's packages on GitHub Packages.
-      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
     steps:
+      # The token secrets can carry a line ending from how they were pasted; pnpm then rejects the header.
+      - name: Package token
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          t=$(printf %s "$PACKAGES_TOKEN" | tr -d '\r\n' | sed 's/^\xef\xbb\xbf//')
+          echo "::add-mask::$t"
+          echo "NODE_AUTH_TOKEN=$t" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref }}

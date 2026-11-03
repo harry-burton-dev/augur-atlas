@@ -18,9 +18,15 @@ jobs:
     # A Version packages merge is released by release.yml, not built twice.
     if: "!startsWith(github.event.head_commit.message, 'Version packages')"
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
     steps:
+      # The token secrets can carry a line ending from how they were pasted; pnpm then rejects the header.
+      - name: Package token
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          t=$(printf %s "$PACKAGES_TOKEN" | tr -d '\r\n' | sed 's/^\xef\xbb\xbf//')
+          echo "::add-mask::$t"
+          echo "NODE_AUTH_TOKEN=$t" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -48,6 +54,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TARGET: ${{ github.sha }}
       - name: Tell AUGUR's release feed
-        run: gh workflow run feed.yml -R "${{ vars.AUGUR_REPO || 'harry-burton-dev/im-platform' }}"
+        run: GH_TOKEN="$(printf %s "$APP_TOKEN" | tr -d '\r\n')" gh workflow run feed.yml -R "${{ vars.AUGUR_REPO || 'harry-burton-dev/im-platform' }}"
         env:
-          GH_TOKEN: ${{ secrets.APP_RELEASES_TOKEN }}
+          APP_TOKEN: ${{ secrets.APP_RELEASES_TOKEN }}

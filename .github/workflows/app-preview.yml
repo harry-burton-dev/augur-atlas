@@ -18,9 +18,15 @@ jobs:
     # Only pull requests from this repository: a fork's can't sign as it.
     if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
     steps:
+      # The token secrets can carry a line ending from how they were pasted; pnpm then rejects the header.
+      - name: Package token
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          t=$(printf %s "$PACKAGES_TOKEN" | tr -d '\r\n' | sed 's/^\xef\xbb\xbf//')
+          echo "::add-mask::$t"
+          echo "NODE_AUTH_TOKEN=$t" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -50,13 +56,21 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           RELEASE_TARGET: ${{ github.event.pull_request.head.sha }}
       - name: Tell AUGUR's release feed
-        run: gh workflow run feed.yml -R "${{ vars.AUGUR_REPO || 'harry-burton-dev/im-platform' }}"
+        run: GH_TOKEN="$(printf %s "$APP_TOKEN" | tr -d '\r\n')" gh workflow run feed.yml -R "${{ vars.AUGUR_REPO || 'harry-burton-dev/im-platform' }}"
         env:
-          GH_TOKEN: ${{ secrets.APP_RELEASES_TOKEN }}
+          APP_TOKEN: ${{ secrets.APP_RELEASES_TOKEN }}
   clean:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
+      # The token secrets can carry a line ending from how they were pasted; pnpm then rejects the header.
+      - name: Package token
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          t=$(printf %s "$PACKAGES_TOKEN" | tr -d '\r\n' | sed 's/^\xef\xbb\xbf//')
+          echo "::add-mask::$t"
+          echo "NODE_AUTH_TOKEN=$t" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -65,4 +79,3 @@ jobs:
         run: npx -y --package "@harry-burton-dev/augur-app-tools" augur-app clean-previews "${{ github.event.pull_request.number }}"
         env:
           GH_TOKEN: ${{ github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
