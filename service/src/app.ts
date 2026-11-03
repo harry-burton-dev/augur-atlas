@@ -1,5 +1,6 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { callerCheckFromEnv, callerFromHeaders, health, packageVersion, signedCallers, type Caller, type CallerCheck, type CallerWorkspace } from '@augur/service-kit';
+import type { EntityFields, EntityList, EntityRights, EntityView, SubgraphQuery } from './api-types.ts';
 import { auditFromEnv, type Audit } from './audit.ts';
 import { floorPrincipal, unseen, viewFloors } from './floors.ts';
 import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } from './ontology.ts';
@@ -26,18 +27,8 @@ export interface Options {
 
 export type OnFloor = Caller & { workspace: CallerWorkspace };
 
-/** What the caller may do with an entity, so the app offers only what will work, and says why not otherwise. */
-export interface EntityRights {
-  /** Change its name, other names, description and details: anyone standing on the floor it's kept on. */
-  edit: boolean;
-  /** Take it out of use: that floor's leads, or whoever made it. */
-  retire: boolean;
-  /** When it can't be changed from here, why, in words. */
-  why?: string;
-}
-
-/** An entity as the caller sees it: with the name of the floor it's kept on and what they may do. */
-export type EntityView = Entity & { floorName: string; can: EntityRights };
+/** What the caller may do with an entity, and the entity as they see it (see `api-types.ts`). */
+export type { EntityRights, EntityView };
 
 const LABEL = { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' } as const;
 const ALIASES = { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' } } as const;
@@ -199,11 +190,11 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
           const { entities, total } = await store.entities({ floors, q: req.query.q, types, limit: req.query.limit, offset: req.query.offset });
           const named = await nameFloors(caller, floors);
           // Which floors' knowledge this is, by name, so the app can say so rather than leave people guessing.
-          return { entities: await view(caller, entities), total, floors, seeing: floors.map(named) };
+          return { entities: await view(caller, entities), total, floors, seeing: floors.map(named) } satisfies EntityList;
         },
       );
 
-      app.post<{ Body: { type: string; label: string; aliases?: string[]; description?: string; details?: Record<string, string> } }>(
+      app.post<{ Body: Required<Pick<EntityFields, 'type' | 'label'>> & EntityFields }>(
         '/entities',
         {
           schema: {
@@ -279,7 +270,7 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
        * The part of the graph around some entities, as seen from where the caller stands: for Data Atlas's
        * explorer and the intent app's briefing context. Entities are linked by facts whose value is an entity.
        */
-      app.post<{ Body: { seeds: { id: string }[]; depth?: number; types?: string[]; relations?: string[]; asOf?: string; limitPerNode?: number } }>(
+      app.post<{ Body: Omit<SubgraphQuery, 'seeds'> & { seeds: { id: string }[] } }>(
         '/subgraph',
         {
           schema: {
@@ -311,7 +302,7 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
         return (await view(found.caller, [found.entity]))[0];
       });
 
-      app.patch<{ Params: { id: string }; Body: { label?: string; aliases?: string[]; description?: string; details?: Record<string, string> } }>(
+      app.patch<{ Params: { id: string }; Body: Omit<EntityFields, 'type'> }>(
         '/entities/:id',
         {
           schema: {

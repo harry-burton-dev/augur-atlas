@@ -1,4 +1,5 @@
 import type { CallerWorkspace } from '@augur/service-kit';
+import type { Unseen } from './api-types.ts';
 
 /**
  * Knowledge in Data Atlas is fenced by floor (Harry, 27 October 2026). Each
@@ -31,13 +32,7 @@ export const viewFloors = (workspace: CallerWorkspace, principals: readonly stri
  * (Harry's rule: explain, never hide). `reachable` is whether the caller could
  * see it from another floor of theirs.
  */
-export interface Unseen {
-  /** `elsewhere`: theirs to see from another floor; `kept`: not theirs to see. */
-  reason: 'elsewhere' | 'kept';
-  /** Where it is kept, as a principal. */
-  floor: string;
-  message: string;
-}
+export type { Unseen };
 
 export const unseen = (floor: string, principals: readonly string[], caller: string, floorName?: string): Unseen => {
   const own = floor === `person:${caller}`;

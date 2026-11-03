@@ -1,4 +1,5 @@
 import { DataFactory, Parser, Writer, type Quad, type Quad_Object } from 'n3';
+import type { Pack, PackTerm } from './api-types.ts';
 import type { Ontology } from './ontology.ts';
 
 /**
@@ -10,30 +11,8 @@ import type { Ontology } from './ontology.ts';
  * MIP MIM loadable by an org that has it).
  */
 
-export interface PackTerm {
-  iri: string;
-  kind: 'class' | 'relation' | 'detail';
-  label: string;
-  /** For a class: the class it is a kind of, by IRI. */
-  parent?: string;
-  /** For a property: the classes it runs from and to, by IRI. */
-  domain?: string[];
-  range?: string[];
-  /** What the pack says it is (rdfs:comment or skos:definition). */
-  note?: string;
-}
-
-export interface Pack {
-  /** Short and stable: "cco", "mip-mim". */
-  id: string;
-  name: string;
-  version: string;
-  /** What it may be used under, as the pack says, so admins can check before loading it. */
-  licence: string;
-  /** Where it came from: a URL, or "uploaded by an admin". */
-  source: string;
-  terms: PackTerm[];
-}
+/** A pack and its terms, as they cross the wire, are written once in api-types.ts. */
+export type { Pack, PackTerm };
 
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';

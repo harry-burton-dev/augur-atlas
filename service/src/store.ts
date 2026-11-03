@@ -2,33 +2,11 @@ import pg from 'pg';
 import { ulid } from 'ulid';
 import { detailsOf, knowledgeSql, starterSql, type DetailDef, type Ontology, type OntologyChange, type RelationDef, type TypeDef } from './ontology.ts';
 import { BUILT_IN_PACKS, type Pack } from './packs.ts';
+import type * as Wire from './api-types.ts';
+import type { Dispute, Entity, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
-/**
- * One real thing the organisation keeps track of: a ship, a port, a company.
- * It has one id for life, a kind (its type in the ontology), a name and the
- * other names it goes by, and the details that say which thing it is. It sits
- * on one floor (`floor`, a principal), which decides who sees it from where.
- */
-export interface Entity {
-  /** `ent_` and a ULID. */
-  id: string;
-  type: string;
-  label: string;
-  /** Other names it goes by, such as a former name or a short one. */
-  aliases: string[];
-  description: string;
-  /** Its details by key, as the ontology names them (`imo`, `mmsi`). */
-  details: Record<string, string>;
-  /** The floor it was made on. */
-  workspace: string;
-  /** Who that floor lets in: `person:<owner>`, `tree:<team>` or `org`. */
-  floor: string;
-  state: 'active' | 'retired';
-  createdBy: string;
-  createdAt: string;
-  updatedBy: string;
-  updatedAt: string;
-}
+/** What crosses the wire as it is kept is written once, in api-types.ts. */
+export type { Dispute, Entity, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
 export interface NewEntity {
   type: string;
@@ -67,75 +45,6 @@ export class KeyTakenError extends Error {
   }
 }
 
-/** Where an observation came from. A document is named by the SDK's DocumentRef (`folio` for Artifacts). */
-export type Source =
-  | { kind: 'person' }
-  | { kind: 'document'; document: { app: string; id: string; version?: string; title: string }; anchor?: string }
-  | { kind: 'other'; note: string };
-
-/** Who or what made a proposal. Only people do in v1; the extractor and agent runs come later. */
-export type Producer = { kind: 'person'; id: string } | { kind: 'extractor'; engine: string; model?: string } | { kind: 'run'; id: string };
-
-/** Words in a source that seem to name a thing. */
-export interface Mention {
-  key: string;
-  text: string;
-  /** What kind of thing the source seems to say it is. */
-  type?: string;
-  /** The block it's in, by its anchor. */
-  anchor?: string;
-  /** The words around it. */
-  context?: string;
-  /** Identity keys the source gives, e.g. { imo: "9400117" }. */
-  keys?: Record<string, string>;
-}
-
-/** Something the source seems to say about a mention: a detail, or a link to another mention. */
-export interface ProposedObservation {
-  key: string;
-  /** The mention it's about, by key. */
-  about: string;
-  property: string;
-  value?: string;
-  /** The mention it links to, by key. */
-  target?: string;
-  observedAt?: string;
-  grade?: string;
-  note?: string;
-  anchor?: string;
-}
-
-/** Vocabulary the source wanted that the ontology hasn't got: for admins, in the studio's candidates (AT7). */
-export interface ProposedTerm {
-  key: string;
-  kind: 'type' | 'detail' | 'relation';
-  name: string;
-  parent?: string;
-  note?: string;
-}
-
-/** An existing entity a mention may be, and why it was offered. */
-export interface Match {
-  entity: string;
-  /** In the order they're tried: an identity key, the name or another name exactly, a name spelt nearly alike, or meaning. */
-  why: 'key' | 'name' | 'alias' | 'similar' | 'meaning';
-  /** For a key: which one, e.g. "IMO number". For a similar spelling: the name it's like. */
-  detail?: string;
-  /** For similar spelling and meaning: how close, from 0 to 1. */
-  score?: number;
-}
-
-/** How a proposal's mentions were matched, so Triage can say what was and wasn't tried, and why. */
-export interface Matching {
-  /** Names spelt nearly alike (pg_trgm). */
-  spelling: boolean;
-  /** Meaning (embeddings through the model gateway). */
-  meaning: boolean;
-  /** Why something wasn't tried, in words. */
-  why?: string;
-  at: string;
-}
-
 export type MentionDecision = { as: 'link'; entity: string } | { as: 'new'; entity: string } | { as: 'drop' };
 export type ObservationDecision = { as: 'seen'; observation: string } | { as: 'accepted'; observation: string; fact: string } | { as: 'drop' };
 /** What an admin made of a term: adopted into a version of the ontology as `key`, or dismissed. */
@@ -145,25 +54,6 @@ export type ProposalItem =
   | { kind: 'mention'; key: string; body: Mention; matches: Match[]; decision?: MentionDecision; decidedBy?: string; decidedAt?: string }
   | { kind: 'observation'; key: string; body: ProposedObservation; matches: Match[]; decision?: ObservationDecision; decidedBy?: string; decidedAt?: string }
   | { kind: 'term'; key: string; body: ProposedTerm; matches: Match[]; decision?: TermDecision; decidedBy?: string; decidedAt?: string };
-
-/** One source's worth of what it seems to say, waiting on a floor's leads in Triage. */
-export interface Proposal {
-  id: string;
-  floor: string;
-  workspace: string;
-  source: Source;
-  producer: Producer;
-  ontologyVersion: number;
-  state: 'open' | 'finished' | 'withdrawn';
-  createdBy: string;
-  createdAt: string;
-  closedBy?: string;
-  closedAt?: string;
-  /** How its mentions were last matched; absent on proposals from before matching was said. */
-  matching?: Matching;
-  /** Its source was withdrawn or deleted while it waited, said in words. */
-  sourceGone?: string;
-}
 
 /** Something in another app that uses an entity, from that app's events: an intent bound to it, so far. */
 export interface UsedBy {
@@ -176,118 +66,9 @@ export interface UsedBy {
   since: string;
 }
 
-/** A document observations of an entity came from, as far as the caller can see. */
-export interface MentionedIn {
-  app: string;
-  id: string;
-  title: string;
-  observations: number;
-  lastAt: string;
-  /** Every observation from it was retracted: it was withdrawn or deleted. */
-  withdrawn: boolean;
-}
+/** A term sources keep asking for, as kept: where adopting it would start is worked out when it's sent. */
+export type TermCandidate = Omit<Wire.TermCandidate, 'start'>;
 
-/** A proposal as listed in Triage: how much of it is decided. */
-export interface ProposalSummary extends Proposal {
-  items: number;
-  decided: number;
-}
-
-/** A version of the ontology: who made it, why, and what changed. */
-export interface OntologyVersion {
-  version: number;
-  note: string;
-  /** Absent for those that came with Data Atlas. */
-  changedBy?: string;
-  changes: OntologyChange[];
-  madeAt: string;
-}
-
-/** A pack as listed: what it is, without its terms. */
-export type PackSummary = Omit<Pack, 'terms'> & { terms: number; builtIn: boolean; loadedBy?: string; loadedAt: string };
-
-/** A term sources keep asking for that the ontology hasn't got, however many times, from wherever. */
-export interface TermCandidate {
-  kind: ProposedTerm['kind'];
-  name: string;
-  /** How many proposals asked for it, and when first and last. */
-  asked: number;
-  firstAt: string;
-  lastAt: string;
-  parents: string[];
-  note?: string;
-}
-
-/**
- * Something someone saw or read about an entity, kept as it was said: never
- * changed, never removed. It sits on the floor it was recorded on; a lead may
- * raise a copy to a floor above, where it is worth more (Harry's Q2 answer).
- */
-export interface Observation {
-  /** `obs_` and a ULID. */
-  id: string;
-  entity: string;
-  /** A detail's key, or a link's (`operated-by`). */
-  property: string;
-  /** For a detail. */
-  value?: string;
-  /** For a link: the entity at the other end. */
-  target?: string;
-  /** When it was seen to be so; without it, when it was recorded. */
-  observedAt?: string;
-  floor: string;
-  workspace: string;
-  source: Source;
-  /** NATO-style grading: the source's reliability (A to F), then the information's credibility (1 to 6), such as "B2". */
-  grade?: string;
-  note: string;
-  /** The intent it was reported under (an intent app's ref), reserved for the intent app. */
-  reportedUnder?: unknown;
-  /** The observation this is a raised copy of. */
-  raisedFrom?: string;
-  createdBy: string;
-  createdAt: string;
-  /** Its source was withdrawn or deleted: it's kept, but no longer counts as evidence. */
-  retracted?: { at: string; why: string };
-}
-
-/**
- * What a floor accepts as so, with two clocks: when it is true in the world
- * (`validFrom` to `validTo`, either open) and when the floor recorded it
- * (`recordedAt`, until `supersededAt` when a later record replaces it). Records
- * are never changed: ending or correcting one writes a new record.
- */
-export interface Fact {
-  /** `fct_` and a ULID. */
-  id: string;
-  entity: string;
-  property: string;
-  value?: string;
-  target?: string;
-  validFrom?: string;
-  validTo?: string;
-  floor: string;
-  workspace: string;
-  /** The observations it rests on. */
-  backedBy: string[];
-  note: string;
-  recordedAt: string;
-  supersededAt?: string;
-  supersededBy?: string;
-  createdBy: string;
-}
-
-/** Someone saying a fact may be wrong, and why. It stays until they, or the fact's floor's leads, clear it. */
-export interface Dispute {
-  id: string;
-  fact: string;
-  floor: string;
-  note: string;
-  by: string;
-  at: string;
-  clearedBy?: string;
-  clearedAt?: string;
-}
 
 export type NewObservation = Omit<Observation, 'id' | 'createdAt'>;
 export type NewFact = Omit<Fact, 'id' | 'recordedAt' | 'supersededAt' | 'supersededBy'>;

@@ -10,80 +10,10 @@
  * name on screen: CCO's Watercraft is shown as Vessel.
  */
 
-/** What a detail holds. More kinds (quantities, places, links) come with facts. */
-export type DetailKind = 'text' | 'number' | 'date';
+import type { DetailDef, Ontology, RelationDef, TypeDef } from './api-types.ts';
 
-export interface DetailDef {
-  key: string;
-  label: string;
-  kind: DetailKind;
-  /** Says which real thing it is: no two entities may share a value, whatever their floor. */
-  identity: boolean;
-  /** What a value must look like, as a regular expression over the whole value. */
-  pattern?: string;
-  /** How a person would recognise one, shown under the field. */
-  hint?: string;
-  /**
-   * False for a detail known only through facts, over time and floor by floor
-   * (a vessel's flag), rather than typed on the entity itself. Absent means true.
-   */
-  onEntity?: boolean;
-  /** The pack term it was adopted from, by IRI (AT7). */
-  packIri?: string;
-}
-
-/**
- * A kind of link from one entity to another: "operated by", "located at". A
- * link is a fact whose value is an entity, so it has the same two clocks, floor
- * and backing as any fact. Read backwards, it uses `inverse`.
- */
-export interface RelationDef {
-  key: string;
-  label: string;
-  inverse: string;
-  /** Kinds it may start from, and end at; each takes its subkinds too. */
-  from: string[];
-  to: string[];
-  pack: string;
-  packTerm: string;
-  packIri?: string;
-}
-
-export interface TypeDef {
-  key: string;
-  label: string;
-  plural: string;
-  /** The kind it is a kind of. */
-  parent?: string;
-  /** Only a heading for the kinds below it: no entity is made of it directly. */
-  abstract: boolean;
-  /** A ui-kit icon name. */
-  icon: string;
-  /** The ontology pack it comes from, and the pack's own name for it. */
-  pack: string;
-  packTerm: string;
-  packIri?: string;
-  details: DetailDef[];
-}
-
-/**
- * One change an admin makes to the ontology in the studio (AT7). Kinds, details
- * and kinds of link are only ever added or renamed, never taken away or
- * narrowed, so nothing already kept stops fitting it.
- */
-export type OntologyChange =
-  | { op: 'add-type'; type: Omit<TypeDef, 'details'> }
-  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string }
-  | { op: 'add-detail'; type: string; detail: DetailDef }
-  | { op: 'edit-detail'; type: string; key: string; label?: string; hint?: string }
-  | { op: 'add-relation'; relation: RelationDef }
-  | { op: 'edit-relation'; key: string; label?: string; inverse?: string; from?: string[]; to?: string[] };
-
-export interface Ontology {
-  version: number;
-  types: TypeDef[];
-  relations: RelationDef[];
-}
+/** The ontology's wire types are written once, in api-types.ts. */
+export type { DetailDef, DetailKind, Ontology, OntologyChange, RelationDef, TypeDef } from './api-types.ts';
 
 const text = (key: string, label: string, more: Partial<DetailDef> = {}): DetailDef => ({ key, label, kind: 'text', identity: false, ...more });
 

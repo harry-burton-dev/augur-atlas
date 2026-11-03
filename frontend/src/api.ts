@@ -1,259 +1,93 @@
 import type { MountContext } from '@augur/mfe-sdk';
 
-export interface DetailDef {
-  key: string;
-  label: string;
-  kind: 'text' | 'number' | 'date';
-  identity: boolean;
-  pattern?: string;
-  hint?: string;
-  /** False when it's known only through facts, not typed on the entity. */
-  onEntity?: boolean;
-  /** The pack term it was adopted from, by IRI. */
-  packIri?: string;
-}
+import type {
+  Adoption,
+  CandidateDecision,
+  Candidates,
+  DetailDef,
+  Dispute as DisputeRecord,
+  DisputeView as Dispute,
+  EntityFields,
+  EntityList,
+  EntityUses as UsedBy,
+  EntityView as Entity,
+  Fact,
+  FactBody,
+  Knowledge,
+  MentionDecisionBody,
+  NewProposal,
+  ObservationBody as NewObservation,
+  ObservationDecisionBody,
+  Observed,
+  Ontology,
+  OntologyChange,
+  OntologyChanged,
+  OntologyVersion,
+  OtherEnd,
+  PackLoaded,
+  Packs,
+  PackUpload,
+  PackView as Pack,
+  Problem,
+  ProposalView,
+  Raised,
+  RelationDef,
+  Source,
+  Subgraph,
+  SubgraphQuery,
+  TermCandidate,
+  Triage,
+  TypeDef,
+} from '../../service/src/api-types.js';
 
-/** A kind of link from one entity to another, read forwards (`label`) or backwards (`inverse`). */
-export interface RelationDef {
-  key: string;
-  label: string;
-  inverse: string;
-  from: string[];
-  to: string[];
-  pack: string;
-  packTerm: string;
-  packIri?: string;
-}
-
-export interface TypeDef {
-  key: string;
-  label: string;
-  plural: string;
-  parent?: string;
-  abstract: boolean;
-  icon: string;
-  pack: string;
-  packTerm: string;
-  packIri?: string;
-  details: DetailDef[];
-}
-
-/** One change an admin makes to the ontology: kinds, details and links are added or renamed, never taken away. */
-export type OntologyChange =
-  | { op: 'add-type'; type: Omit<TypeDef, 'details'> }
-  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string }
-  | { op: 'add-detail'; type: string; detail: DetailDef }
-  | { op: 'edit-detail'; type: string; key: string; label?: string; hint?: string }
-  | { op: 'add-relation'; relation: RelationDef }
-  | { op: 'edit-relation'; key: string; label?: string; inverse?: string; from?: string[]; to?: string[] };
-
-/** Whether the person may change the ontology, and why not. */
-export interface Governs {
-  govern: boolean;
-  why?: string;
-}
-
-export interface PackSummary {
-  id: string;
-  name: string;
-  version: string;
-  licence: string;
-  source: string;
-  terms: number;
-  builtIn: boolean;
-  loadedBy?: string;
-  loadedAt: string;
-}
-
-export interface PackTerm {
-  iri: string;
-  kind: 'class' | 'relation' | 'detail';
-  label: string;
-  parent?: string;
-  domain?: string[];
-  range?: string[];
-  note?: string;
-  /** Where it's kept here, when it has been adopted: a kind's or link's key, or kind.detail. */
-  adopted?: string;
-}
-
-export interface Pack extends Omit<PackSummary, 'terms' | 'loadedBy' | 'loadedAt'> {
-  terms: PackTerm[];
-}
-
-export interface OntologyVersion {
-  version: number;
-  note: string;
-  changedBy?: string;
-  changes: OntologyChange[];
-  madeAt: string;
-}
-
-/** A word sources keep asking for that the ontology hasn't got, and where adopting it would start. */
-export interface TermCandidate {
-  kind: 'type' | 'detail' | 'relation';
-  name: string;
-  asked: number;
-  firstAt: string;
-  lastAt: string;
-  parents: string[];
-  note?: string;
-  start: OntologyChange;
-}
-
-/** What an admin says when adopting a pack term, over what the pack gives. */
-export interface Adoption {
-  pack: string;
-  iri: string;
-  label?: string;
-  plural?: string;
-  icon?: string;
-  parent?: string;
-  type?: string;
-  kind?: DetailDef['kind'];
-  from?: string[];
-  to?: string[];
-  inverse?: string;
-}
-
-export interface Ontology {
-  version: number;
-  types: TypeDef[];
-  relations: RelationDef[];
-}
-
-/** What the caller may do with an entity, and why not when they can't. */
-export interface EntityRights {
-  edit: boolean;
-  retire: boolean;
-  why?: string;
-}
-
-export interface Entity {
-  id: string;
-  type: string;
-  label: string;
-  aliases: string[];
-  description: string;
-  details: Record<string, string>;
-  workspace: string;
-  floor: string;
-  /** Where it's kept, as people know it: "Org", "You", a team's name. */
-  floorName: string;
-  state: 'active' | 'retired';
-  createdBy: string;
-  createdAt: string;
-  updatedBy: string;
-  updatedAt: string;
-  can: EntityRights;
-}
-
-export interface EntityFields {
-  type?: string;
-  label?: string;
-  aliases?: string[];
-  description?: string;
-  details?: Record<string, string>;
-}
-
-/** The entity at the other end of a link, or why it doesn't show from here. */
-export type OtherEnd =
-  | { kind: 'entity'; id: string; type: string; label: string; state: Entity['state']; floorName: string }
-  | { id: string; hidden: true; reason: 'elsewhere' | 'kept'; floor: string; message: string }
-  | { id: string; missing: true };
-
-export type Source = { kind: 'person' } | { kind: 'document'; document: { app: string; id: string; version?: string; title: string }; anchor?: string } | { kind: 'other'; note: string };
-
-export interface Dispute {
-  id: string;
-  fact: string;
-  floorName: string;
-  note: string;
-  by: string;
-  at: string;
-  mine: boolean;
-}
-
-/** A fact as the caller sees it: what a floor accepts as so, on two clocks. */
-export interface FactView {
-  id: string;
-  entity: string;
-  property: string;
-  value?: string;
-  target?: string;
-  /** `in` when this entity is the far end of someone else's link. */
-  direction: 'out' | 'in';
-  other?: OtherEnd;
-  validFrom?: string;
-  validTo?: string;
-  floor: string;
-  floorName: string;
-  backedBy: string[];
-  note: string;
-  recordedAt: string;
-  disputes: Dispute[];
-  can: { end: boolean; withdraw: boolean; dispute: boolean; why?: string };
-  /** Every observation it rests on was retracted, said in words. */
-  unbacked?: string;
-}
-
-/** An observation as the caller sees it: what someone saw or read, as they said it. */
-export interface ObservationView {
-  id: string;
-  entity: string;
-  property: string;
-  value?: string;
-  target?: string;
-  direction: 'out' | 'in';
-  other?: OtherEnd;
-  observedAt?: string;
-  floor: string;
-  floorName: string;
-  source: Source;
-  grade?: string;
-  note: string;
-  raisedFrom?: string;
-  raisedTo: string[];
-  createdBy: string;
-  createdAt: string;
-  can: { accept: boolean; raise: boolean; raiseTo: { floor: string; name: string }[]; why?: string };
-  /** Its source was withdrawn or deleted: kept, no longer evidence. */
-  retracted?: { at: string; why: string };
-}
-
-export interface Knowledge {
-  at: string | null;
-  known: string | null;
-  /** What the person may do on the floor they stand on: leads accept and raise. */
-  here: { floorName: string; accept: boolean; why?: string };
-  facts: FactView[];
-  observations: ObservationView[];
-  /** Everything known of it here came from sources since withdrawn. */
-  noCurrentSource?: string;
-}
-
-/** What uses an entity: intents bound to it (ids, named by Mandate) and documents what's known came from. */
-export interface UsedBy {
-  intents: { app: string; id: string; role: string; since: string; floorName?: string }[];
-  documents: { app: string; id: string; title: string; observations: number; lastAt: string; withdrawn: boolean }[];
-}
+// The wire types are written once, in the service's api-types.ts, and shared with it. Where the service keeps a
+// record under the same name, the page's shape is a `...View` there; the pages know it by the shorter name here.
+export type { Dispute, Entity, NewObservation, Pack, UsedBy };
+export type {
+  Adoption,
+  DetailDef,
+  DetailKind,
+  EntityFields,
+  EntityRights,
+  FactRights,
+  FactView,
+  Fold,
+  Governs,
+  GraphEdge,
+  GraphNode,
+  GraphUnseen,
+  Knowledge,
+  MatchView,
+  Matching,
+  Mention,
+  MentionView,
+  NewProposal,
+  ObservationRights,
+  ObservationView,
+  Ontology,
+  OntologyChange,
+  OntologyVersion,
+  OtherEnd,
+  PackSummary,
+  PackTerm,
+  ProposalObservationView,
+  ProposalSummary,
+  ProposalView,
+  ProposedObservation,
+  RelationDef,
+  Source,
+  Subgraph,
+  SubgraphQuery,
+  TermCandidate,
+  Triage,
+  TypeDef,
+} from '../../service/src/api-types.js';
 
 /** An intent as Mandate names it for this person: a title, or that they can't open it. */
 export interface IntentName {
   id: string;
   label?: string;
   canOpen: boolean;
-}
-
-export interface NewObservation {
-  property: string;
-  value?: string;
-  target?: string;
-  observedAt?: string;
-  source: Source;
-  grade?: string;
-  note?: string;
-  accept?: boolean;
 }
 
 /** A refusal, in words people can act on, with what the service said about it. */
@@ -278,7 +112,7 @@ export class AtlasApi {
       ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
     });
     if (!res.ok) {
-      const problem = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      const problem = (await res.json().catch(() => ({}))) as Partial<Problem>;
       throw new AtlasError(res.status >= 500 || !problem.message ? 'Data Atlas isn’t answering. Try again in a moment.' : problem.message, res.status, problem.error, problem);
     }
     return (await res.json()) as T;
@@ -293,7 +127,7 @@ export class AtlasApi {
     const params = new URLSearchParams(
       Object.entries(query).flatMap(([k, v]) => (v === undefined || v === '' ? [] : (Array.isArray(v) ? v : [v]).map((one) => [k, String(one)]))),
     );
-    return this.call<{ entities: Entity[]; total: number; floors: string[]; seeing: string[] }>('GET', `/entities${params.size ? `?${params}` : ''}`);
+    return this.call<EntityList>('GET', `/entities${params.size ? `?${params}` : ''}`);
   }
 
   entity(id: string) {
@@ -304,7 +138,7 @@ export class AtlasApi {
     return this.call<Entity>('POST', '/entities', fields);
   }
 
-  updateEntity(id: string, fields: EntityFields) {
+  updateEntity(id: string, fields: Omit<EntityFields, 'type'>) {
     return this.call<Entity>('PATCH', `/entities/${encodeURIComponent(id)}`, fields);
   }
 
@@ -319,31 +153,31 @@ export class AtlasApi {
   }
 
   observe(id: string, observation: NewObservation) {
-    return this.call<{ observation: ObservationView; fact?: FactView }>('POST', `/entities/${encodeURIComponent(id)}/observations`, observation);
+    return this.call<Observed>('POST', `/entities/${encodeURIComponent(id)}/observations`, observation);
   }
 
-  acceptFact(id: string, fact: { backedBy: string[]; validFrom?: string; validTo?: string; note?: string }) {
-    return this.call<FactView>('POST', `/entities/${encodeURIComponent(id)}/facts`, fact);
+  acceptFact(id: string, fact: FactBody) {
+    return this.call<Fact>('POST', `/entities/${encodeURIComponent(id)}/facts`, fact);
   }
 
   endFact(id: string, validTo?: string) {
-    return this.call<FactView>('POST', `/facts/${encodeURIComponent(id)}/end`, validTo ? { validTo } : {});
+    return this.call<Fact>('POST', `/facts/${encodeURIComponent(id)}/end`, validTo ? { validTo } : {});
   }
 
   withdrawFact(id: string) {
-    return this.call<FactView>('POST', `/facts/${encodeURIComponent(id)}/withdraw`);
+    return this.call<Fact>('POST', `/facts/${encodeURIComponent(id)}/withdraw`);
   }
 
   dispute(fact: string, note: string) {
-    return this.call<Dispute>('POST', `/facts/${encodeURIComponent(fact)}/disputes`, { note });
+    return this.call<DisputeRecord>('POST', `/facts/${encodeURIComponent(fact)}/disputes`, { note });
   }
 
   clearDispute(id: string) {
-    return this.call<Dispute>('POST', `/disputes/${encodeURIComponent(id)}/clear`);
+    return this.call<DisputeRecord>('POST', `/disputes/${encodeURIComponent(id)}/clear`);
   }
 
   raise(observation: string, to: string) {
-    return this.call<ObservationView>('POST', `/observations/${encodeURIComponent(observation)}/raise`, { to });
+    return this.call<Raised>('POST', `/observations/${encodeURIComponent(observation)}/raise`, { to });
   }
 
   /** This floor's Triage: open proposals, or those finished and withdrawn. */
@@ -364,11 +198,11 @@ export class AtlasApi {
     return this.call<ProposalView>('POST', `/proposals/${encodeURIComponent(id)}/match`);
   }
 
-  decideMention(proposal: string, key: string, decision: { as: 'link'; entity: string } | { as: 'new'; type?: string; label?: string } | { as: 'drop' }) {
+  decideMention(proposal: string, key: string, decision: MentionDecisionBody) {
     return this.call<ProposalView>('POST', `/proposals/${encodeURIComponent(proposal)}/mentions/${encodeURIComponent(key)}`, decision);
   }
 
-  decideObservation(proposal: string, key: string, decision: { as: 'accepted' | 'seen' | 'drop'; grade?: string }) {
+  decideObservation(proposal: string, key: string, decision: ObservationDecisionBody) {
     return this.call<ProposalView>('POST', `/proposals/${encodeURIComponent(proposal)}/observations/${encodeURIComponent(key)}`, decision);
   }
 
@@ -381,7 +215,7 @@ export class AtlasApi {
   }
 
   packs() {
-    return this.call<Governs & { packs: PackSummary[] }>('GET', '/ontology/packs');
+    return this.call<Packs>('GET', '/ontology/packs');
   }
 
   pack(id: string) {
@@ -389,8 +223,8 @@ export class AtlasApi {
   }
 
   /** Loads a pack from Turtle, or a newer copy of one loaded before. */
-  loadPack(pack: { id: string; name: string; version: string; licence: string; source?: string; turtle: string }) {
-    return this.call<PackSummary>('POST', '/ontology/packs', pack);
+  loadPack(pack: PackUpload) {
+    return this.call<PackLoaded>('POST', '/ontology/packs', pack);
   }
 
   versions() {
@@ -398,20 +232,20 @@ export class AtlasApi {
   }
 
   candidates() {
-    return this.call<Governs & { waiting: number; candidates: TermCandidate[] }>('GET', '/ontology/candidates');
+    return this.call<Candidates>('GET', '/ontology/candidates');
   }
 
   changeOntology(changes: OntologyChange[], note?: string) {
-    return this.call<{ version: number; ontology: Ontology }>('POST', '/ontology/changes', { changes, ...(note ? { note } : {}) });
+    return this.call<OntologyChanged>('POST', '/ontology/changes', { changes, ...(note ? { note } : {}) });
   }
 
   adopt(adoption: Adoption) {
-    return this.call<{ version: number; ontology: Ontology }>('POST', '/ontology/adopt', adoption);
+    return this.call<OntologyChanged>('POST', '/ontology/adopt', adoption);
   }
 
   /** Adopts a word sources asked for, as the change given, or dismisses it. */
   decideCandidate(c: Pick<TermCandidate, 'kind' | 'name'>, decision: { as: 'adopt'; change: OntologyChange } | { as: 'dismiss' }) {
-    return this.call<{ version: number; ontology: Ontology } | { dismissed: number }>('POST', '/ontology/candidates/decide', { kind: c.kind, name: c.name, ...decision });
+    return this.call<OntologyChanged | { dismissed: number }>('POST', '/ontology/candidates/decide', { kind: c.kind, name: c.name, ...decision } satisfies CandidateDecision);
   }
 
   /** The ontology as OWL in Turtle, to save. */
@@ -436,153 +270,6 @@ export class AtlasApi {
   subgraph(query: SubgraphQuery) {
     return this.call<Subgraph>('POST', '/subgraph', { ...query, seeds: query.seeds.map((id) => ({ id })) });
   }
-}
-
-export interface Mention {
-  key: string;
-  text: string;
-  type?: string;
-  anchor?: string;
-  context?: string;
-  keys?: Record<string, string>;
-}
-
-export interface ProposedObservation {
-  key: string;
-  about: string;
-  property: string;
-  value?: string;
-  target?: string;
-  observedAt?: string;
-  grade?: string;
-  note?: string;
-  anchor?: string;
-}
-
-export interface NewProposal {
-  source: Source;
-  mentions: Mention[];
-  observations?: ProposedObservation[];
-}
-
-/** An existing entity a mention may be, and why it was offered. */
-export interface MatchView {
-  entity: Extract<OtherEnd, { kind: 'entity' }>;
-  /** An identity key, the name or another name exactly, a name spelt nearly alike, or meaning. */
-  why: 'key' | 'name' | 'alias' | 'similar' | 'meaning';
-  /** The key's name, or the name it's spelt like. */
-  detail?: string;
-  /** How close, 0 to 1, for spelling and meaning. */
-  score?: number;
-}
-
-/** How a proposal's mentions were matched, and why something wasn't tried. */
-export interface Matching {
-  spelling: boolean;
-  meaning: boolean;
-  why?: string;
-  at: string;
-}
-
-export type MentionView = Mention & {
-  matches: MatchView[];
-  decision?: { as: 'link' | 'new'; entity: OtherEnd } | { as: 'drop' };
-  decidedBy?: string;
-  decidedAt?: string;
-};
-
-export type ProposalObservationView = ProposedObservation & {
-  decision?: { as: 'seen'; observation: string } | { as: 'accepted'; observation: string; fact: string } | { as: 'drop' };
-  decidedAt?: string;
-  /** Whether it can be decided yet, and why not. */
-  ready: boolean;
-  why?: string;
-};
-
-export interface ProposalSummary {
-  id: string;
-  source: Source;
-  producer: { kind: 'person'; id: string } | { kind: string; [k: string]: unknown };
-  state: 'open' | 'finished' | 'withdrawn';
-  createdBy: string;
-  createdAt: string;
-  closedAt?: string;
-  matching?: Matching;
-  /** Its source was withdrawn or deleted while it waited. */
-  sourceGone?: string;
-  items: number;
-  decided: number;
-}
-
-export interface Triage {
-  floorName: string;
-  decide: boolean;
-  why?: string;
-  proposals: ProposalSummary[];
-}
-
-export interface ProposalView extends Omit<ProposalSummary, 'items' | 'decided'> {
-  floorName: string;
-  ontologyVersion: number;
-  left: number;
-  mentions: MentionView[];
-  observations: ProposalObservationView[];
-  terms: { key: string; kind: 'type' | 'detail' | 'relation'; name: string; parent?: string; note?: string }[];
-  can: { decide: boolean; finish: boolean; withdraw: boolean; why?: string };
-}
-
-export interface SubgraphQuery {
-  seeds: string[];
-  depth?: number;
-  types?: string[];
-  relations?: string[];
-  asOf?: string;
-  limitPerNode?: number;
-}
-
-export interface GraphNode {
-  ref: { kind: 'entity'; id: string; type: string; label: string };
-  state: Entity['state'];
-  floorName: string;
-  depth: number;
-}
-
-export interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  relation: string;
-  floorName: string;
-  validFrom?: string;
-  validTo?: string;
-  /** Its open disputes that show from here. */
-  disputed: number;
-}
-
-/** Links of one relation from an entity that weren't drawn: too many, or past the last ring. */
-export interface Fold {
-  entity: string;
-  relation: string;
-  /** `out` when the entity is the link's subject ("operated by"), `in` when it's the object ("operates"). */
-  direction: 'out' | 'in';
-  count: number;
-}
-
-export interface GraphUnseen {
-  id: string;
-  reason: 'elsewhere' | 'kept';
-  floor: string;
-  message: string;
-  /** The shown entities it is linked to. */
-  near: string[];
-}
-
-export interface Subgraph {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  more: Fold[];
-  unseen: GraphUnseen[];
-  missing: string[];
 }
 
 /** Where the person is in Data Atlas, as its address has it. */

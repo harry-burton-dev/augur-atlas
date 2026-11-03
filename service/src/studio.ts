@@ -1,8 +1,9 @@
 import { callerFromHeaders, type Caller } from '@augur/service-kit';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { Adoption, CandidateDecision, Candidates, OntologyChanged, Packs, PackUpload, PackView } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Atlas } from './knowledge.ts';
-import { isA, type DetailDef, type DetailKind, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
+import { isA, type DetailDef, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
 import { owlTurtle, packFromTurtle, type PackTerm } from './packs.ts';
 import type { ProposedTerm } from './store.ts';
 
@@ -144,22 +145,8 @@ export const adoptedIn = (ontology: Ontology) => {
   return at;
 };
 
-/** What an admin may say when adopting a pack term, over what the pack gives. */
-export interface Adoption {
-  pack: string;
-  iri: string;
-  key?: string;
-  label?: string;
-  plural?: string;
-  icon?: string;
-  parent?: string;
-  /** For a detail: the kind it's of, and what it holds. */
-  type?: string;
-  kind?: DetailKind;
-  from?: string[];
-  to?: string[];
-  inverse?: string;
-}
+/** What an admin may say when adopting a pack term, over what the pack gives (see `api-types.ts`). */
+export type { Adoption };
 
 /** The change adopting a pack term makes, or why it can't yet, in words. */
 export const adoptionChange = (ontology: Ontology, packId: string, term: PackTerm, a: Adoption): OntologyChange | string => {
@@ -302,21 +289,21 @@ export const studioRoutes = (app: FastifyInstance, atlas: Atlas) => {
     const version = await store.changeOntology(changes, caller.id, note?.trim() || changes.map(changeWords).join('; ').replace(/^\w/, (x) => x.toUpperCase()), adopts);
     void recorded({ actor: caller.id, action: 'ontology.changed', target: `ontology:${version}`, workspace: caller.workspace.id, detail: { version, changes: changes.map((c) => c.op) } });
     void atlas.resolver.catchUp(await store.ontology());
-    return { version, ontology: await store.ontology() };
+    return { version, ontology: await store.ontology() } satisfies OntologyChanged;
   };
 
-  app.get('/ontology/packs', async (req) => ({ ...governs(callerFromHeaders(req.headers)), packs: await store.packs() }));
+  app.get('/ontology/packs', async (req) => ({ ...governs(callerFromHeaders(req.headers)), packs: await store.packs() }) satisfies Packs);
 
   /** A pack's terms, each saying where it's kept here when it has been adopted. */
   app.get<{ Params: { id: string } }>('/ontology/packs/:id', { schema: { params: { type: 'object', properties: { id: { type: 'string', maxLength: 48 } }, required: ['id'] } } }, async (req, reply) => {
     const pack = await store.pack(req.params.id);
     if (!pack) return reply.code(404).send({ error: 'not-found', message: 'There’s no such pack.' });
     const at = adoptedIn(await store.ontology());
-    return { ...pack, terms: pack.terms.map((t) => ({ ...t, ...(at.has(t.iri) ? { adopted: at.get(t.iri) } : {}) })) };
+    return { ...pack, terms: pack.terms.map((t) => ({ ...t, ...(at.has(t.iri) ? { adopted: at.get(t.iri) } : {}) })) } satisfies PackView;
   });
 
   /** Loads a pack from Turtle: MIP MIM, the full CCO, or the org's own. */
-  app.post<{ Body: { id: string; name: string; version: string; licence: string; source?: string; turtle: string } }>(
+  app.post<{ Body: PackUpload }>(
     '/ontology/packs',
     {
       bodyLimit: 8 * 1024 * 1024,
@@ -424,13 +411,13 @@ export const studioRoutes = (app: FastifyInstance, atlas: Atlas) => {
   app.get('/ontology/candidates', async (req) => {
     const can = governs(callerFromHeaders(req.headers));
     const candidates = await store.termCandidates();
-    if (!can.govern) return { ...can, waiting: candidates.length, candidates: [] };
+    if (!can.govern) return { ...can, waiting: candidates.length, candidates: [] } satisfies Candidates;
     const ontology = await store.ontology();
-    return { ...can, waiting: candidates.length, candidates: candidates.map((c) => ({ ...c, start: candidateChange(ontology, c) })) };
+    return { ...can, waiting: candidates.length, candidates: candidates.map((c) => ({ ...c, start: candidateChange(ontology, c) })) } satisfies Candidates;
   });
 
   /** Adopts a candidate term (as the change given) or dismisses it, for every source that asked. */
-  app.post<{ Body: { kind: ProposedTerm['kind']; name: string; as: 'adopt' | 'dismiss'; change?: OntologyChange; note?: string } }>(
+  app.post<{ Body: CandidateDecision }>(
     '/ontology/candidates/decide',
     {
       schema: {

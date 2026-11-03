@@ -1,5 +1,6 @@
 import type { People } from './people.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { EntityUses, FactBody, FactRights, Knowledge, ObservationRights, Observed, OtherEnd, Raised, Subgraph, SubgraphQuery } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Audit } from './audit.ts';
 import { floorPrincipal, type Unseen } from './floors.ts';
@@ -33,28 +34,8 @@ export interface Atlas {
   people: People;
 }
 
-/** The other end of a link, as the caller may see it: the entity, or why not. */
-export type OtherEnd =
-  | { kind: 'entity'; id: string; type: string; label: string; state: Entity['state']; floorName: string }
-  | ({ id: string; hidden: true } & Unseen)
-  | { id: string; missing: true };
-
-/** What can be done with a fact from here, and why not. */
-export interface FactRights {
-  end: boolean;
-  withdraw: boolean;
-  dispute: boolean;
-  why?: string;
-}
-
-/** What can be done with an observation from here, and why not. */
-export interface ObservationRights {
-  accept: boolean;
-  raise: boolean;
-  /** The floors above it can be raised to, by principal and name. */
-  raiseTo: { floor: string; name: string }[];
-  why?: string;
-}
+/** The other end of a link, and what can be done with a fact or an observation from here (see `api-types.ts`). */
+export type { FactRights, ObservationRights, OtherEnd };
 
 export const ID_PARAMS = { type: 'object', properties: { id: { type: 'string', maxLength: 64 } }, required: ['id'] } as const;
 export const WHEN = { type: 'string', minLength: 10, maxLength: 40 } as const;
@@ -149,7 +130,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
     return {
       intents: uses.filter((u) => u.app === 'mandate').map((u) => ({ app: u.app, id: u.id, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
       documents,
-    };
+    } satisfies EntityUses;
   });
 
   /** Everything known about an entity from here: facts true at `at` as recorded by `known`, its links both ways, and observations. */
@@ -220,7 +201,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
           raisedTo: (raised.get(o.id) ?? []).map(named),
           can: observationRights(o),
         })),
-      };
+      } satisfies Knowledge;
     },
   );
 
@@ -279,14 +260,14 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
         createdBy: caller.id,
       });
       void recorded({ actor: caller.id, action: 'observation.recorded', target: entity.id, workspace: caller.workspace.id, detail: { observation: observation.id, property: observation.property } });
-      if (!req.body.accept) return reply.code(201).send({ observation });
+      if (!req.body.accept) return reply.code(201).send({ observation } satisfies Observed);
       const fact = await accept(atlas, caller, entity, [observation], {});
-      return reply.code(201).send({ observation, fact });
+      return reply.code(201).send({ observation, fact } satisfies Observed);
     },
   );
 
   /** A lead accepts what observations say as so on this floor: a fact, backed by them. */
-  app.post<{ Params: { id: string }; Body: { backedBy: string[]; validFrom?: string; validTo?: string; note?: string } }>(
+  app.post<{ Params: { id: string }; Body: FactBody }>(
     '/entities/:id/facts',
     {
       schema: {
@@ -420,7 +401,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       const { id: _, createdAt: __, raisedFrom: ___, ...rest } = observation;
       const raised = await store.addObservation({ ...rest, floor: req.body.to, workspace: caller.workspace.id, raisedFrom: observation.id, createdBy: caller.id });
       void recorded({ actor: caller.id, action: 'observation.raised', target: observation.entity, workspace: caller.workspace.id, detail: { observation: observation.id, raised: raised.id, to: req.body.to } });
-      return reply.code(201).send({ ...raised, floorName: named(raised.floor) });
+      return reply.code(201).send({ ...raised, floorName: named(raised.floor) } satisfies Raised);
     },
   );
 };
@@ -536,8 +517,8 @@ const ownFact = async (atlas: Atlas, req: FastifyRequest, reply: FastifyReply, i
 export const subgraph = async (
   atlas: Atlas,
   caller: OnFloor,
-  { seeds, depth = 1, types, relations, asOf, limitPerNode = 25 }: { seeds: string[]; depth?: number; types?: string[]; relations?: string[]; asOf?: string; limitPerNode?: number },
-) => {
+  { seeds, depth = 1, types, relations, asOf, limitPerNode = 25 }: SubgraphQuery,
+): Promise<Subgraph> => {
   const { store } = atlas;
   const sight = await atlas.sight(caller);
   const ontology = await store.ontology();
