@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { MatchView, ObservationDecisionBody, ProposalRights, ProposalView, Triage } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import { floorPrincipal } from './floors.ts';
 import { ID_PARAMS, LEADS_ONLY, NOTE, SOURCE, WHEN, accept, leadsHere, otherEnds, sayable, sourceOf, when, type Atlas } from './knowledge.ts';
@@ -59,13 +60,8 @@ const TERM = {
   additionalProperties: false,
 } as const;
 
-/** What can be done with a proposal from here, and why not. */
-export interface ProposalRights {
-  decide: boolean;
-  finish: boolean;
-  withdraw: boolean;
-  why?: string;
-}
+/** What can be done with a proposal from here, and why not (see `api-types.ts`). */
+export type { ProposalRights };
 
 /** Checks a proposal's parts point at each other properly; the first problem, in words. */
 const shapeProblem = (mentions: Mention[], observations: ProposedObservation[], terms: ProposedTerm[]) => {
@@ -113,7 +109,7 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
   };
 
   /** The proposal as the caller sees it: each mention's matches and decided entities named, and what they may do. */
-  const proposalView = async (caller: OnFloor, p: Proposal, items: ProposalItem[]) => {
+  const proposalView = async (caller: OnFloor, p: Proposal, items: ProposalItem[]): Promise<ProposalView> => {
     const sight = await atlas.sight(caller);
     const ids = items.flatMap((i) => [...i.matches.map((m) => m.entity), ...(i.kind === 'mention' && i.decision && i.decision.as !== 'drop' ? [i.decision.entity] : [])]);
     const others = await otherEnds(atlas, caller, ids, sight);
@@ -129,7 +125,7 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
         .map((i) => ({
           ...i.body,
           // A match no longer showing from here, or retired since, isn't offered.
-          matches: i.matches.map((m) => ({ ...m, entity: others(m.entity) })).filter((m) => 'kind' in m.entity && m.entity.state === 'active'),
+          matches: i.matches.map((m) => ({ ...m, entity: others(m.entity) })).filter((m): m is MatchView => 'kind' in m.entity && m.entity.state === 'active'),
           ...(i.decision ? { decision: i.decision.as === 'drop' ? i.decision : { as: i.decision.as, entity: others(i.decision.entity) } } : {}),
           ...(i.decidedBy ? { decidedBy: i.decidedBy, decidedAt: i.decidedAt } : {}),
         })),
@@ -218,7 +214,7 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
         decide: leadsHere(caller),
         ...(leadsHere(caller) ? {} : { why: 'Only this floor’s leads decide proposals. You can see what’s waiting.' }),
         proposals: found,
-      };
+      } satisfies Triage;
     },
   );
 
@@ -324,7 +320,7 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
   );
 
   /** Decides an observation: accepted as so on this floor, kept as seen, or dropped. Its source is the proposal's. */
-  app.post<{ Params: { id: string; key: string }; Body: { as: 'accepted' | 'seen' | 'drop'; grade?: string; observedAt?: string; note?: string } }>(
+  app.post<{ Params: { id: string; key: string }; Body: ObservationDecisionBody }>(
     '/proposals/:id/observations/:key',
     {
       schema: {

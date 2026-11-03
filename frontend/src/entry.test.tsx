@@ -345,6 +345,8 @@ describe('explorer', () => {
 const PROPOSAL: ProposalView = {
   id: 'prp_1',
   source: { kind: 'document', document: { app: 'folio', id: 'd-1', version: '2', title: 'Port report' }, anchor: 'b2' },
+  floor: 'tree:t-mar',
+  workspace: 't-mar',
   producer: { kind: 'person', id: 'u2' },
   state: 'open',
   createdBy: 'u2',
