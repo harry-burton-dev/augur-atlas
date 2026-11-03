@@ -1,5 +1,11 @@
 # @apps/atlas
 
+## 0.2.2
+
+### Patch Changes
+
+- e26db4b: Data Atlas is built and released from its own repository now, signed by this repository's release workflow. Nothing changes for people using it.
+
 ## 0.1.2
 
 ### Patch Changes
