@@ -1,5 +1,7 @@
 # Data Atlas
 
+Part of AUGUR, which is proprietary; see `LICENSE`.
+
 It ships with AUGUR (a pillar app); `docs/atlas.md` in the AUGUR repository covers running it in a deployment.
 
 The things the organisation keeps track of (ships, ports, organisations, people, places, events) and what is known about them. Artifacts holds what was published, the intent app holds what people mean to do, and Data Atlas holds what those are about.
