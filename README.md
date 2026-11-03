@@ -1,6 +1,6 @@
 # Data Atlas
 
-It ships with AUGUR (a pillar app); [docs/atlas.md](../docs/atlas.md) covers running it in a deployment.
+It ships with AUGUR (a pillar app); `docs/atlas.md` in the AUGUR repository covers running it in a deployment.
 
 The things the organisation keeps track of (ships, ports, organisations, people, places, events) and what is known about them. Artifacts holds what was published, the intent app holds what people mean to do, and Data Atlas holds what those are about.
 
@@ -73,7 +73,7 @@ Knowledge is fenced by floor like entities are (Harry, 27 October 2026). An **ob
 
 ## Triage
 
-Nothing becomes knowledge without a lead deciding (Harry, 27 October 2026; auto-accept waits for the agent runtime). Whatever reads a source, a person now and an extractor later, files a **proposal** in the Triage of the floor it's on: the source, the **mentions** it found (words that seem to name a thing, with the passage around them) and the **observations** it read about them. Data Atlas suggests what each mention may be, from what shows on that floor (**resolve**): by identity key, then the name or another name exactly, then names spelt nearly alike (pg_trgm, which the platform puts in every app's database), then meaning. Matching by meaning asks the model gateway for vectors (`models:use`, and an embedding model on the server: `MODEL_EMBEDDING_NAME`, see [docs/agents.md](../../docs/agents.md)) and keeps one per entity, from its name, kind, other names and description, beside the model that made it; it is done again when the entity changes. Each proposal says what was tried and, when matching by meaning or spelling wasn't, why (models off, no embedding model, Data Atlas not granted `models:use` on that floor). A lead of that floor says what each one is: one already known, a new one made on that floor, or nothing; then accepts each observation as so, keeps it as seen, or drops it, and finishes the proposal. Words the ontology hasn't got (`terms`) go to the admins as candidates in the studio and hold nothing up. In Artifacts, marking words in a document and choosing **Add to Data Atlas** sends a one-mention proposal through the `entity.propose` intent.
+Nothing becomes knowledge without a lead deciding (Harry, 27 October 2026; auto-accept waits for the agent runtime). Whatever reads a source, a person now and an extractor later, files a **proposal** in the Triage of the floor it's on: the source, the **mentions** it found (words that seem to name a thing, with the passage around them) and the **observations** it read about them. Data Atlas suggests what each mention may be, from what shows on that floor (**resolve**): by identity key, then the name or another name exactly, then names spelt nearly alike (pg_trgm, which the platform puts in every app's database), then meaning. Matching by meaning asks the model gateway for vectors (`models:use`, and an embedding model on the server: `MODEL_EMBEDDING_NAME`, see `docs/agents.md` in the AUGUR repository) and keeps one per entity, from its name, kind, other names and description, beside the model that made it; it is done again when the entity changes. Each proposal says what was tried and, when matching by meaning or spelling wasn't, why (models off, no embedding model, Data Atlas not granted `models:use` on that floor). A lead of that floor says what each one is: one already known, a new one made on that floor, or nothing; then accepts each observation as so, keeps it as seen, or drops it, and finishes the proposal. Words the ontology hasn't got (`terms`) go to the admins as candidates in the studio and hold nothing up. In Artifacts, marking words in a document and choosing **Add to Data Atlas** sends a one-mention proposal through the `entity.propose` intent.
 
 ## Used by, and retraction
 
@@ -94,3 +94,16 @@ Everyone can read the ontology on its own page: the kinds, their details, the ki
 ## Intents
 
 Data Atlas handles the SDK's entity intents (SDK 1.5): `entity.pick` opens a picker over the asking app, narrowed to the `types` asked for, answering with one `EntityRef` (or a list, with `multiple`); `entity.open` opens the entity's page; `entity.explain` opens it with why it shows from this floor marked; `entity.propose` asks what kind of thing the marked words name and files them in the floor's Triage, answering with a `ProposalReceipt`. Everything is as seen from the floor the person stands on.
+
+## Releases
+
+It lives in its own repository and ships with AUGUR: CI here builds, tests, signs and releases it, and each AUGUR release takes the version pinned in AUGUR's `release/shipped-apps.json`.
+
+| Workflow | When | What |
+| --- | --- | --- |
+| CI | Every pull request | Lint, typecheck, test and build |
+| App previews | A pull request that changes the app | A signed preview its developers can run beside the app |
+| App dev builds | Every merge into main | A signed dev build for preview servers |
+| Release | Merging Version packages | The beta release `app/atlas@<version>`, which AUGUR's next release can pin |
+
+Each needs two secrets: `PACKAGES_READ_TOKEN` (reads AUGUR's packages) and `APP_RELEASES_TOKEN` (starts AUGUR's release feed workflow).

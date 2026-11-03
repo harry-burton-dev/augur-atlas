@@ -1,0 +1,42 @@
+name: CI
+# Every pull request: lint, typecheck, test and build, in one job (a few minutes). Images are built only
+# by the release, dev build and preview workflows.
+on:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write # only to commit a missing pnpm-lock.yaml back to the pull request
+  packages: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Reads AUGUR's packages on GitHub Packages.
+      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}
+      - name: Install
+        run: |
+          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
+      - name: Commit the lockfile, the first time
+        if: hashFiles('pnpm-lock.yaml') != '' && github.event_name == 'pull_request'
+        run: |
+          if [ -n "$(git status --porcelain pnpm-lock.yaml)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml && git commit -m "Add pnpm-lock.yaml" && git push
+          fi
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

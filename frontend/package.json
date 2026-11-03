@@ -1,6 +1,6 @@
 {
   "name": "@apps/atlas-frontend",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Data Atlas's micro frontend. Built as one ES module the shell imports from the registry's entry URL.",
@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@augur/app-kit": "workspace:*",
-    "@augur/mfe-sdk": "workspace:*",
+    "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.3.0",
+    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^1.10.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "react": "^19.3.1",
