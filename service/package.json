@@ -2,6 +2,7 @@
   "name": "@apps/atlas",
   "version": "0.2.2",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "description": "Data Atlas's service: the entity graph behind the gateway at /api/atlas.",
   "scripts": {
