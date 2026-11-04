@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { steadyPool } from '@augur/service-kit';
 import { ulid } from 'ulid';
 import { detailsOf, knowledgeSql, starterSql, type DetailDef, type Ontology, type OntologyChange, type RelationDef, type TypeDef } from './ontology.ts';
 import { BUILT_IN_PACKS, type Pack } from './packs.ts';
@@ -620,7 +621,7 @@ export class PgAtlasStore {
   }
 
   static async connect(connectionString: string) {
-    const store = new PgAtlasStore(new pg.Pool({ connectionString, max: 4, options: '-c search_path=atlas' }));
+    const store = new PgAtlasStore(steadyPool(new pg.Pool({ connectionString, max: 4, options: '-c search_path=atlas' })));
     await store.migrate();
     await store.prepareExtras();
     await store.seedPacks();
@@ -1109,7 +1110,7 @@ export class PgAtlasStore {
 
   /** A connection pool whose search path is Data Atlas's schema, for the outbox relay, which names its table plainly. */
   static outboxPool(connectionString: string) {
-    return new pg.Pool({ connectionString, max: 2, options: '-c search_path=atlas' });
+    return steadyPool(new pg.Pool({ connectionString, max: 2, options: '-c search_path=atlas' }));
   }
 
   /** Active entities on these floors that hold an identity key with this value, of any kind that has it. */
