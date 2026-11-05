@@ -1,6 +1,6 @@
 import { callerFromHeaders, type Caller } from '@augur/service-kit';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { Adoption, CandidateDecision, Candidates, OntologyChanged, Packs, PackUpload, PackView } from './api-types.ts';
+import { CHOICE_VALUES, DETAIL_KINDS, type Adoption, type CandidateDecision, type Candidates, type OntologyChanged, type Packs, type PackUpload, type PackView } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Atlas } from './knowledge.ts';
 import { isA, type DetailDef, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
@@ -37,6 +37,23 @@ export const pluralOf = (label: string) =>
   /[^aeiou]y$/i.test(label) ? `${label.slice(0, -1)}ies` : /(ss|us|x|z|ch|sh)$/i.test(label) ? `${label}es` : /s$/i.test(label) ? label : `${label}s`;
 
 const words = (s: string | undefined, what: string, most = 80) => (!s?.trim() ? `${what} can’t be blank.` : s.length > most ? `${what} is too long.` : undefined);
+
+const UNIT = { type: 'string', maxLength: 24 } as const;
+const VALUES = { type: 'array', maxItems: CHOICE_VALUES, items: { type: 'string', maxLength: 80 } } as const;
+
+/** Why what a detail holds won't do: a quantity needs its unit, a choice its values, and nothing else carries either. */
+const holdsProblem = (d: DetailDef): string | undefined => {
+  if (d.kind === 'quantity' && !d.unit?.trim()) return `Say what ${d.label} is measured in, such as t, m or knots.`;
+  if (d.kind !== 'quantity' && d.unit) return 'Only a quantity has a unit.';
+  if (d.kind === 'choice') {
+    const values = (d.values ?? []).map((v) => v.trim()).filter(Boolean);
+    if (values.length < 2) return `Give ${d.label} at least two values to choose from.`;
+    if (new Set(values.map((v) => v.toLowerCase())).size !== values.length) return 'Each value of a choice must differ from the others.';
+    if (d.identity) return 'A choice can’t say which thing it is: many share each value.';
+    if (d.pattern) return 'A choice has its values, so it doesn’t take a pattern.';
+  } else if (d.values) return 'Only a choice has values.';
+  return undefined;
+};
 
 /**
  * Why a set of changes won't do, in words; undefined when they will. Checked
@@ -89,6 +106,8 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
           }
         }
         if (d.identity && d.onEntity === false) return 'An identity key is typed on the entity itself, so it can’t be known only through facts.';
+        const holds = holdsProblem(d);
+        if (holds) return holds;
         t.details.push(d);
         break;
       }
@@ -170,7 +189,7 @@ export const adoptionChange = (ontology: Ontology, packId: string, term: PackTer
   if (term.kind === 'detail') {
     const on = a.type ?? (term.domain ?? []).map((i) => byIri.get(i)?.key).find(Boolean);
     if (!on) return 'Say which kind it’s a detail of: the pack’s domain isn’t kept here yet.';
-    const detail: DetailDef = { key, label, kind: a.kind ?? 'text', identity: false, packIri: term.iri };
+    const detail: DetailDef = { key, label, kind: a.kind ?? 'text', identity: false, packIri: term.iri, ...(a.unit ? { unit: a.unit } : {}), ...(a.values ? { values: a.values } : {}) };
     return { op: 'add-detail', type: on, detail };
   }
   const from = kinds(a.from, term.domain, 'from');
@@ -195,8 +214,10 @@ const DETAIL_DEF = {
   properties: {
     key: { type: 'string', maxLength: 48 },
     label: { type: 'string', maxLength: 80 },
-    kind: { enum: ['text', 'number', 'date'] },
+    kind: { enum: [...DETAIL_KINDS] },
     identity: { type: 'boolean' },
+    unit: UNIT,
+    values: VALUES,
     pattern: { type: 'string', maxLength: 200 },
     hint: { type: 'string', maxLength: 200 },
     onEntity: { type: 'boolean' },
@@ -376,7 +397,9 @@ export const studioRoutes = (app: FastifyInstance, atlas: Atlas) => {
             icon: { type: 'string', maxLength: 32 },
             parent: { type: 'string', maxLength: 48 },
             type: { type: 'string', maxLength: 48 },
-            kind: { enum: ['text', 'number', 'date'] },
+            kind: { enum: [...DETAIL_KINDS] },
+            unit: UNIT,
+            values: VALUES,
             from: KINDS,
             to: KINDS,
             inverse: { type: 'string', maxLength: 80 },

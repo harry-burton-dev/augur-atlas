@@ -244,7 +244,11 @@ export function Knowledge({ api, entity, ontology, pickDocument, onOpenEntity }:
                     <p className="atlas-note">Nothing it can link to shows from this floor yet. Add the entity first, or go to a floor where it shows.</p>
                   )
                 ) : (
-                  <TextField key={`value:${property}`} name="value" label={chosen?.label ?? 'Value'} required maxLength={200} hint={chosen?.detail?.hint} />
+                  chosen?.detail?.kind === 'choice' ? (
+                    <Select key={`value:${property}`} name="value" label={chosen.label} options={(chosen.detail.values ?? []).map((v) => ({ value: v, label: v }))} defaultValue={chosen.detail.values?.[0] ?? null} />
+                  ) : (
+                    <TextField key={`value:${property}`} name="value" label={chosen?.label ?? 'Value'} required maxLength={200} hint={[chosen?.detail?.hint, chosen?.detail?.unit ? `A number, in ${chosen.detail.unit}` : ''].filter(Boolean).join('. ') || undefined} />
+                  )
                 )}
                 <DateField name="observedAt" label="When it was seen" optional empty="Today" quick={PAST_DAYS} />
                 <Select

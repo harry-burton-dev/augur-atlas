@@ -415,6 +415,9 @@ export const typeTree = (ontology: Ontology): { type: TypeDef; depth: number }[]
 };
 
 /** One line saying what an entity is: its kind, its identity keys, where it's kept. */
+/** A detail's value as people read it: a quantity with its unit. */
+export const detailText = (d: Pick<DetailDef, 'kind' | 'unit'>, value: string | undefined) => (value && d.kind === 'quantity' && d.unit ? `${value} ${d.unit}` : (value ?? ''));
+
 export const entityLine = (ontology: Ontology | undefined, e: Entity) => {
   const type = ontology?.types.find((t) => t.key === e.type);
   const keys = ontology
@@ -477,7 +480,8 @@ export const propertyLabel = (ontology: Ontology | undefined, entityType: string
 /** What a fact or observation says, from this entity's side: "Flag state: Panama", "Operated by Northwind". */
 export const saying = (ontology: Ontology | undefined, entityType: string, x: { property: string; value?: string; other?: OtherEnd; direction: 'out' | 'in' }) => {
   const label = propertyLabel(ontology, entityType, x.property, x.direction);
-  if (x.value !== undefined) return `${label}: ${x.value}`;
+  const detail = ontology && detailsOf(ontology, entityType).find((d) => d.key === x.property);
+  if (x.value !== undefined) return `${label}: ${detail ? detailText(detail, x.value) : x.value}`;
   const other = x.other;
   if (!other || 'missing' in other) return `${label} an entity that no longer exists`;
   if ('hidden' in other) return `${label} an entity you can’t see from here`;

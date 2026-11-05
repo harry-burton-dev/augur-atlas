@@ -24,7 +24,18 @@ const HOLDS: SelectOption[] = [
   { value: 'text', label: 'Words' },
   { value: 'number', label: 'A number' },
   { value: 'date', label: 'A date' },
+  { value: 'quantity', label: 'A quantity, in a unit' },
+  { value: 'choice', label: 'One of a few values' },
+  { value: 'place', label: 'A place' },
 ];
+
+/** What a detail's form adds over its kind: a quantity's unit, a choice's values (one line, comma separated). */
+const holdsExtra = (holds: DetailDef['kind'], values: Record<string, string>): Pick<DetailDef, 'unit' | 'values'> =>
+  holds === 'quantity'
+    ? { unit: (values.unit ?? '').trim() }
+    : holds === 'choice'
+      ? { values: [...new Set((values.values ?? '').split(',').map((v) => v.trim()).filter(Boolean))] }
+      : {};
 
 /** What a term or change is, in a word. */
 const whatWord = (kind: 'class' | 'type' | 'detail' | 'relation') => (kind === 'relation' ? 'a kind of link' : kind === 'detail' ? 'a detail' : 'a kind of thing');
@@ -183,7 +194,7 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
     const key = keyFrom(name);
     const packed = 'candidate' in f.via ? { pack: 'augur', packTerm: f.via.candidate.name } : { pack: 'augur', packTerm: name };
     if (f.what === 'type') return { op: 'add-type', type: { key, label: name, plural: values.plural?.trim() || pluralOf(name), abstract: false, icon: f.icon, ...packed, ...(f.parent ? { parent: f.parent } : {}) } };
-    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, identity: false } };
+    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, identity: false, ...holdsExtra(f.holds, values) } };
     return { op: 'add-relation', relation: { key, label: name, inverse: values.inverse.trim(), from: f.from ? [f.from] : [], to: f.to ? [f.to] : [], ...packed } };
   };
 
@@ -200,7 +211,7 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
         iri: term.iri,
         label: values.label.trim(),
         ...(f.what === 'type' ? { plural: values.plural.trim(), parent: f.parent, icon: f.icon } : {}),
-        ...(f.what === 'detail' ? { type: f.type, kind: f.holds } : {}),
+        ...(f.what === 'detail' ? { type: f.type, kind: f.holds, ...holdsExtra(f.holds, values) } : {}),
         ...(f.what === 'relation' ? { from: [f.from], to: [f.to], inverse: values.inverse.trim() } : {}),
       });
     } else if ('candidate' in f.via) {
@@ -271,7 +282,7 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
                 {t.abstract ? <span className="atlas-note"> a heading only</span> : null}
               </span>
               <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`].join(' · ')}</span>
-              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
+              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
             </div>
             {govern ? (
               <div className="atlas-actions">
@@ -471,6 +482,8 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
                 <>
                   <Select label="A detail of" options={kindOptions('Choose a kind')} value={f.type} onChange={(v) => setForm({ ...f, type: v })} />
                   <Select label="Holds" options={HOLDS} value={f.holds} onChange={(v) => setForm({ ...f, holds: v as DetailDef['kind'] })} />
+                  {f.holds === 'quantity' ? <TextField key="unit" name="unit" label="Measured in" required maxLength={24} hint="The unit, as people write it: t, m, knots" /> : null}
+                  {f.holds === 'choice' ? <TextField key="values" name="values" label="Values to choose from" required maxLength={2000} hint="At least two, separated by commas" /> : null}
                 </>
               ) : null}
               {f.what === 'relation' ? (

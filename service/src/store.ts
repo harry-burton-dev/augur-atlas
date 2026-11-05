@@ -379,6 +379,16 @@ export const migrations: { id: string; sql: string }[] = [
       create unique index raises_waiting on atlas.raises (entity) where state = 'waiting';
       create index raises_to on atlas.raises (to_floor, state, asked_at desc);`,
   },
+  {
+    id: '011_detail_kinds',
+    sql: `
+      -- More kinds of detail (PER-328): a quantity in a unit, a choice of a few values, and a place. Added
+      -- not valid, so old rows aren't checked again; an older release never writes the new kinds.
+      alter table atlas.ontology_details drop constraint ontology_details_kind_check;
+      alter table atlas.ontology_details add constraint ontology_details_kind_check
+        check (kind in ('text', 'number', 'date', 'quantity', 'choice', 'place')) not valid;
+      alter table atlas.ontology_details add column unit text, add column choices text[];`,
+  },
 ];
 
 /**
@@ -481,9 +491,9 @@ const applyChange = async (client: pg.PoolClient, c: OntologyChange) => {
     case 'add-detail': {
       const d = c.detail;
       await client.query(
-        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
-        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null],
+        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
+        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null],
       );
       return;
     }
@@ -811,8 +821,8 @@ export class PgAtlasStore {
       this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null }>(
         'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri from atlas.ontology_types order by sort, key',
       ),
-      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null }>(
-        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri from atlas.ontology_details order by type, sort, key',
+      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null }>(
+        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices from atlas.ontology_details order by type, sort, key',
       ),
     ]);
     const relations = await this.pool.query<{ key: string; label: string; inverse: string; from_types: string[]; to_types: string[]; pack: string; pack_term: string; pack_iri: string | null }>(
@@ -842,6 +852,8 @@ export class PgAtlasStore {
               ...(d.hint ? { hint: d.hint } : {}),
               ...(d.on_entity ? {} : { onEntity: false }),
               ...(d.pack_iri ? { packIri: d.pack_iri } : {}),
+              ...(d.unit ? { unit: d.unit } : {}),
+              ...(d.choices?.length ? { values: d.choices } : {}),
             })),
         }),
       ),

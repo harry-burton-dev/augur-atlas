@@ -11,8 +11,19 @@
 
 // ---- the ontology ----
 
-/** What a detail holds. More kinds (quantities, places, links) come with facts. */
-export type DetailKind = 'text' | 'number' | 'date';
+/**
+ * What a detail holds: words, a number, a date, a quantity (a number in the
+ * detail's `unit`), one of a few `values` (a choice), or a place (written as
+ * words for now; coordinates come with the map). Links to other entities are
+ * relations, not details.
+ */
+export type DetailKind = 'text' | 'number' | 'date' | 'quantity' | 'choice' | 'place';
+
+/** Every kind of detail, in the order the studio offers them. */
+export const DETAIL_KINDS: readonly DetailKind[] = ['text', 'number', 'date', 'quantity', 'choice', 'place'];
+
+/** Most values a choice may offer. */
+export const CHOICE_VALUES = 50;
 
 export interface DetailDef {
   key: string;
@@ -31,6 +42,10 @@ export interface DetailDef {
   onEntity?: boolean;
   /** The pack term it was adopted from, by IRI (AT7). */
   packIri?: string;
+  /** A quantity's unit, as people write it: "t", "m", "knots". */
+  unit?: string;
+  /** A choice's values, in the order they're offered. */
+  values?: string[];
 }
 
 /**
@@ -187,6 +202,9 @@ export interface Adoption {
   /** For a detail: the kind it's of, and what it holds. */
   type?: string;
   kind?: DetailKind;
+  /** For a quantity, its unit; for a choice, its values. */
+  unit?: string;
+  values?: string[];
   from?: string[];
   to?: string[];
   inverse?: string;
