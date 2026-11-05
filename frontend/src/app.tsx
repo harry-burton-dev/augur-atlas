@@ -23,6 +23,7 @@ import {
 import { AtlasError, entityLine, onEntity, typeTree, whyShown, type AtlasApi, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
+import { MergedNote } from './merged.js';
 import { OntologyView } from './ontology.js';
 import { Triage } from './triage.js';
 import { UsedBy } from './used-by.js';
@@ -289,6 +290,7 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
       <>
         <PageHead trail={[{ id: 'entities', label: 'Everything here' }]} onTrail={() => move({ page: 'entities' })} eyebrow={kind?.label ?? e.type} heading={e.label} summary={e.description} actions={actions} onAction={(a) => run[a.id]?.()} />
         {e.state === 'retired' ? <p className="atlas-note atlas-retired">Retired {relativeTime(e.updatedAt)}. Its id stays, so whatever points at it still says what it was.</p> : null}
+        {e.state === 'merged' ? <MergedNote api={api} entity={e.id} onOpen={(id) => move({ page: 'entity', id })} /> : null}
         {e.aliases.length ? (
           <div className="atlas-tags">
             {e.aliases.map((a) => (

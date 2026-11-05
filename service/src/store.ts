@@ -4,10 +4,10 @@ import { ulid } from 'ulid';
 import { detailsOf, knowledgeSql, starterSql, type DetailDef, type Ontology, type OntologyChange, type RelationDef, type TypeDef } from './ontology.ts';
 import { BUILT_IN_PACKS, type Pack } from './packs.ts';
 import type * as Wire from './api-types.ts';
-import type { Dispute, Entity, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
+import type { Dispute, Entity, EntityMerge, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
 /** What crosses the wire as it is kept is written once, in api-types.ts. */
-export type { Dispute, Entity, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
+export type { Dispute, Entity, EntityMerge, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
 export interface NewEntity {
   type: string;
@@ -320,6 +320,41 @@ export const migrations: { id: string; sql: string }[] = [
       create index observations_document on atlas.observations ((source->'document'->>'app'), (source->'document'->>'id')) where source->>'kind' = 'document';
       alter table atlas.proposals add column source_gone text;`,
   },
+  {
+    id: '009_merges',
+    sql: `
+      -- Two entities found to be the same thing (augur-atlas decision 0001). The junior is placed under the
+      -- senior and nothing moves, so an undo brings it back exactly as it was. A merge is never deleted.
+      alter table atlas.entities drop constraint entities_state_check;
+      alter table atlas.entities add constraint entities_state_check check (state in ('active', 'retired', 'merged'));
+      create table atlas.merges (
+        id text primary key,
+        junior text not null references atlas.entities(id),
+        senior text not null references atlas.entities(id),
+        floor text not null,
+        workspace_id text not null,
+        why text not null,
+        decided_by text not null,
+        decided_at timestamptz not null default now(),
+        undone_by text,
+        undone_at timestamptz,
+        undone_why text,
+        check (junior <> senior)
+      );
+      create unique index merges_standing on atlas.merges (junior) where undone_at is null;
+      create index merges_senior on atlas.merges (senior);
+      -- The evidence: observations for the merge and against it.
+      create table atlas.merge_cites (
+        merge text not null references atlas.merges(id),
+        observation text not null references atlas.observations(id),
+        stance text not null check (stance in ('for', 'against')),
+        note text not null default '',
+        primary key (merge, observation)
+      );
+      -- An observation that misled a merge is marked, never removed.
+      alter table atlas.observations add column discredited_at timestamptz, add column discredited_by text, add column discredited_why text,
+        add column discredited_in text references atlas.merges(id);`,
+  },
 ];
 
 /**
@@ -489,8 +524,12 @@ interface ObservationRow {
   created_at: Date;
   retracted_at: Date | null;
   retracted_why: string | null;
+  discredited_at: Date | null;
+  discredited_by: string | null;
+  discredited_why: string | null;
 }
-const OBSERVATION_COLUMNS = 'id, entity, property, value, target, observed_at, floor, workspace_id, source, grade, note, reported_under, raised_from, created_by, created_at, retracted_at, retracted_why';
+const OBSERVATION_COLUMNS =
+  'id, entity, property, value, target, observed_at, floor, workspace_id, source, grade, note, reported_under, raised_from, created_by, created_at, retracted_at, retracted_why, discredited_at, discredited_by, discredited_why';
 const fromObservationRow = (r: ObservationRow): Observation => ({
   id: r.id,
   entity: r.entity,
@@ -508,7 +547,48 @@ const fromObservationRow = (r: ObservationRow): Observation => ({
   createdBy: r.created_by,
   createdAt: r.created_at.toISOString(),
   ...(r.retracted_at ? { retracted: { at: r.retracted_at.toISOString(), why: r.retracted_why ?? '' } } : {}),
+  ...(r.discredited_at ? { discredited: { at: r.discredited_at.toISOString(), by: r.discredited_by ?? '', why: r.discredited_why ?? '' } } : {}),
 });
+
+interface MergeRow {
+  id: string;
+  junior: string;
+  senior: string;
+  floor: string;
+  why: string;
+  decided_by: string;
+  decided_at: Date;
+  undone_by: string | null;
+  undone_at: Date | null;
+  undone_why: string | null;
+  cites: { observation: string; stance: 'for' | 'against'; note: string }[];
+  discredited: string[];
+}
+/** A merge with its evidence, and the observations its undo discredited, oldest cite first. */
+const MERGE_SELECT = `select m.id, m.junior, m.senior, m.floor, m.why, m.decided_by, m.decided_at, m.undone_by, m.undone_at, m.undone_why,
+    coalesce((select json_agg(json_build_object('observation', c.observation, 'stance', c.stance, 'note', c.note) order by c.observation) from atlas.merge_cites c where c.merge = m.id), '[]') as cites,
+    array(select o.id from atlas.observations o where o.discredited_in = m.id order by o.id) as discredited
+  from atlas.merges m`;
+const fromMergeRow = (r: MergeRow): EntityMerge => ({
+  id: r.id,
+  junior: r.junior,
+  senior: r.senior,
+  floor: r.floor,
+  why: r.why,
+  cites: r.cites,
+  decidedBy: r.decided_by,
+  decidedAt: r.decided_at.toISOString(),
+  ...(r.undone_at ? { undone: { by: r.undone_by ?? '', at: r.undone_at.toISOString(), why: r.undone_why ?? '', discredited: r.discredited } } : {}),
+});
+
+/** A merge that can't be made or undone as asked, said in words. */
+export class MergeError extends Error {
+  readonly code: 'not-active' | 'already-merged' | 'bad-cite' | 'not-standing' | 'not-cited';
+  constructor(code: MergeError['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
 
 interface FactRow {
   id: string;
@@ -933,6 +1013,75 @@ export class PgAtlasStore {
       await tell(client, 'retired', rows[0]);
       return fromRow(rows[0]);
     });
+  }
+
+  /**
+   * Places `junior` under `senior`: they were found to be the same thing. Nothing
+   * moves (facts, observations, links and keys stay the junior's), so an undo
+   * brings it back exactly. Cites must be observations of either entity.
+   */
+  async mergeEntities(m: { junior: string; senior: string; why: string; cites: { observation: string; stance: 'for' | 'against'; note: string }[]; by: string }): Promise<EntityMerge> {
+    return this.inTransaction(async (client) => {
+      const { rows: both } = await client.query<EntityRow>(`select ${ENTITY_COLUMNS} from atlas.entities where id = any($1) for update`, [[m.junior, m.senior]]);
+      const junior = both.find((e) => e.id === m.junior);
+      const senior = both.find((e) => e.id === m.senior);
+      if (!junior || junior.state !== 'active' || !senior || senior.state !== 'active') throw new MergeError('not-active', 'Both must be in use: a retired or merged entity can’t be merged.');
+      if (m.cites.length) {
+        const { rows } = await client.query<{ id: string }>('select id from atlas.observations where id = any($1) and (entity = any($2) or target = any($2))', [m.cites.map((c) => c.observation), [m.junior, m.senior]]);
+        if (rows.length !== new Set(m.cites.map((c) => c.observation)).size) throw new MergeError('bad-cite', 'Cite only what was observed of one of the two.');
+      }
+      const id = `mrg_${ulid()}`;
+      try {
+        await client.query('insert into atlas.merges (id, junior, senior, floor, workspace_id, why, decided_by) values ($1, $2, $3, $4, $5, $6, $7)', [id, m.junior, m.senior, junior.floor, junior.workspace_id, m.why, m.by]);
+      } catch (err) {
+        if ((err as { code?: string }).code === '23505') throw new MergeError('already-merged', 'It is already placed under another entity.');
+        throw err;
+      }
+      for (const c of m.cites) await client.query('insert into atlas.merge_cites (merge, observation, stance, note) values ($1, $2, $3, $4) on conflict do nothing', [id, c.observation, c.stance, c.note]);
+      await client.query("update atlas.entities set state = 'merged', updated_by = $2, updated_at = now() where id = $1", [m.junior, m.by]);
+      await client.query('insert into atlas.outbox (topic, workspace_id, payload) values ($1, $2, $3)', ['atlas.entity.merged', junior.workspace_id, JSON.stringify({ entity: m.junior, into: m.senior, merge: id, type: junior.type })]);
+      const { rows } = await client.query<MergeRow>(`${MERGE_SELECT} where m.id = $1`, [id]);
+      return fromMergeRow(rows[0]);
+    });
+  }
+
+  /**
+   * Undoes a standing merge: the junior is in use again, as it was. Observations
+   * in `discredit` (each cited for the merge) are marked as having misled it,
+   * and kept.
+   */
+  async undoMerge(id: string, u: { why: string; discredit: string[]; by: string }): Promise<EntityMerge> {
+    return this.inTransaction(async (client) => {
+      const { rows: found } = await client.query<{ junior: string; senior: string; workspace_id: string }>(
+        'update atlas.merges set undone_by = $2, undone_at = now(), undone_why = $3 where id = $1 and undone_at is null returning junior, senior, workspace_id',
+        [id, u.by, u.why],
+      );
+      if (!found[0]) throw new MergeError('not-standing', 'That merge isn’t standing: it was undone already, or there is no such merge.');
+      const { junior, senior, workspace_id } = found[0];
+      if (u.discredit.length) {
+        const { rowCount } = await client.query(
+          `update atlas.observations set discredited_at = now(), discredited_by = $2, discredited_why = $3, discredited_in = $4
+             where id = any($1) and id in (select observation from atlas.merge_cites where merge = $4 and stance = 'for')`,
+          [u.discredit, u.by, u.why, id],
+        );
+        if (rowCount !== new Set(u.discredit).size) throw new MergeError('not-cited', 'Only an observation the merge was made on can be marked as having misled it.');
+      }
+      const { rows: back } = await client.query<EntityRow>(`update atlas.entities set state = 'active', updated_by = $2, updated_at = now() where id = $1 and state = 'merged' returning ${ENTITY_COLUMNS}`, [junior, u.by]);
+      await client.query('insert into atlas.outbox (topic, workspace_id, payload) values ($1, $2, $3)', ['atlas.entity.split', workspace_id, JSON.stringify({ entity: junior, from: senior, merge: id, type: back[0]?.type })]);
+      const { rows } = await client.query<MergeRow>(`${MERGE_SELECT} where m.id = $1`, [id]);
+      return fromMergeRow(rows[0]);
+    });
+  }
+
+  async merge(id: string): Promise<EntityMerge | undefined> {
+    const { rows } = await this.pool.query<MergeRow>(`${MERGE_SELECT} where m.id = $1`, [id]);
+    return rows[0] && fromMergeRow(rows[0]);
+  }
+
+  /** Every merge an entity is in, either side, standing or undone, newest first. */
+  async mergesOf(entity: string): Promise<EntityMerge[]> {
+    const { rows } = await this.pool.query<MergeRow>(`${MERGE_SELECT} where m.junior = $1 or m.senior = $1 order by m.decided_at desc, m.id desc`, [entity]);
+    return rows.map(fromMergeRow);
   }
 
   /** Writes an entity's identity keys afresh, refusing one another entity holds. */

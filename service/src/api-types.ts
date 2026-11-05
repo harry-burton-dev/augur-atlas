@@ -222,7 +222,8 @@ export interface Entity {
   workspace: string;
   /** Who that floor lets in: `person:<owner>`, `tree:<team>` or `org`. */
   floor: string;
-  state: 'active' | 'retired';
+  /** `merged`: found to be the same as another entity and placed under it (`GET /entities/:id/merges` says which, why and on what evidence). */
+  state: 'active' | 'retired' | 'merged';
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -333,6 +334,8 @@ export interface Observation {
   createdAt: string;
   /** Its source was withdrawn or deleted: it's kept, but no longer counts as evidence. */
   retracted?: { at: string; why: string };
+  /** It misled a merge that was undone: it's kept where it is, saying who found it wrong and why. */
+  discredited?: { at: string; by: string; why: string };
 }
 
 /**
@@ -456,6 +459,54 @@ export interface MentionedIn {
 }
 
 /** `GET /entities/:id/used-by`: intents bound to it (ids, named by Mandate) and documents what's known came from. */
+/** An observation a merge rests on, or one that weighs against it. */
+export interface MergeCite {
+  observation: string;
+  stance: 'for' | 'against';
+  note: string;
+}
+
+/**
+ * Two entities found to be the same thing (PER-319, augur-atlas decision 0001).
+ * The junior is placed under the senior and nothing moves: its facts,
+ * observations, links and keys stay its own, so undoing the merge brings it
+ * back exactly as it was, with the same id. The merge keeps who decided, why
+ * and on what evidence, for and against; an undo keeps who and why too.
+ */
+export interface EntityMerge {
+  /** `mrg_` and a ULID. */
+  id: string;
+  junior: string;
+  senior: string;
+  /** The floor it was decided on (the junior's). */
+  floor: string;
+  why: string;
+  cites: MergeCite[];
+  decidedBy: string;
+  decidedAt: string;
+  undone?: { by: string; at: string; why: string; discredited: string[] };
+}
+
+export interface MergeBody {
+  /** The entity it is the same as, which stays. */
+  into: string;
+  why: string;
+  cites?: { observation: string; stance: 'for' | 'against'; note?: string }[];
+}
+
+export interface UndoMergeBody {
+  why: string;
+  /** Observations the merge cited for it that turned out to mislead: marked, never removed. */
+  discredit?: string[];
+}
+
+/** An entity's merges, either way: what was placed under it, and what it is placed under. */
+export interface EntityMerges {
+  /** The standing merge that placed it under another entity, if any. */
+  placedUnder?: EntityMerge;
+  merges: EntityMerge[];
+}
+
 export interface EntityUses {
   intents: { app: string; id: string; role: string; since: string; floorName?: string }[];
   /** Records in another app linked to it: a library, folder or document, by its level of the shape (a file is a document). */

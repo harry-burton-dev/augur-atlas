@@ -239,7 +239,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       const found = await atlas.seen(req, reply, req.params.id);
       if (!found) return reply;
       const { caller, entity } = found;
-      if (entity.state !== 'active') return reply.code(409).send({ error: 'retired', message: 'It has been retired, so nothing more is recorded about it.' });
+      if (entity.state !== 'active') return reply.code(409).send({ error: entity.state, message: entity.state === 'merged' ? 'It is merged into another entity: record it there, or undo the merge.' : 'It has been retired, so nothing more is recorded about it.' });
       if (req.body.accept && !leadsHere(caller)) return reply.code(403).send({ error: 'cannot-accept', message: LEADS_ONLY });
       const source = sourceOf(req.body.source);
       if (typeof source === 'string') return reply.code(400).send({ error: 'bad-source', message: source });
@@ -287,7 +287,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       if (!found) return reply;
       const { caller, entity } = found;
       if (!leadsHere(caller)) return reply.code(403).send({ error: 'cannot-accept', message: LEADS_ONLY });
-      if (entity.state !== 'active') return reply.code(409).send({ error: 'retired', message: 'It has been retired, so nothing more is accepted about it.' });
+      if (entity.state !== 'active') return reply.code(409).send({ error: entity.state, message: entity.state === 'merged' ? 'It is merged into another entity: accept it there, or undo the merge.' : 'It has been retired, so nothing more is accepted about it.' });
       const { floors } = await atlas.sight(caller);
       const backing = await store.observationsById([...new Set(req.body.backedBy)]);
       const usable = backing.filter((o) => o.entity === entity.id && floors.includes(o.floor));

@@ -150,7 +150,7 @@ export const syncGraph = (graph: MultiDirectedGraph, open: Explored, ontology: O
       color: floorColour(look, n.floorName),
       kind: 'entity',
       fixed: centre,
-      ...(n.state === 'retired' ? { color: look.muted } : {}),
+      ...(n.state !== 'active' ? { color: look.muted } : {}),
     });
   }
   for (const e of shown.edges) {
