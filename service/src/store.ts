@@ -437,6 +437,12 @@ export const migrations: { id: string; sql: string }[] = [
       alter table atlas.ontology_types add column floor text;
       alter table atlas.ontology_details add column floor text;`,
   },
+  {
+    id: '017_many_details',
+    sql: `
+      -- A detail that holds several values at once (a person's languages), each its own fact.
+      alter table atlas.ontology_details add column many boolean not null default false;`,
+  },
 ];
 
 /**
@@ -542,9 +548,9 @@ const applyChange = async (client: pg.PoolClient, c: OntologyChange) => {
     case 'add-detail': {
       const d = c.detail;
       await client.query(
-        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
-        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null, d.changes === true, d.floor ?? null],
+        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor, many, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
+        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null, d.changes === true, d.floor ?? null, d.many === true],
       );
       return;
     }
@@ -872,8 +878,8 @@ export class PgAtlasStore {
       this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null; symbol: string | null; floor: string | null }>(
         'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, floor from atlas.ontology_types order by sort, key',
       ),
-      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null; changes: boolean; floor: string | null }>(
-        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor from atlas.ontology_details order by type, sort, key',
+      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null; changes: boolean; floor: string | null; many: boolean }>(
+        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor, many from atlas.ontology_details order by type, sort, key',
       ),
     ]);
     const relations = await this.pool.query<{ key: string; label: string; inverse: string; from_types: string[]; to_types: string[]; pack: string; pack_term: string; pack_iri: string | null }>(
@@ -909,6 +915,7 @@ export class PgAtlasStore {
               ...(d.choices?.length ? { values: d.choices } : {}),
               ...(d.changes ? { changes: true } : {}),
               ...(d.floor ? { floor: d.floor } : {}),
+              ...(d.many ? { many: true } : {}),
             })),
         }),
       ),

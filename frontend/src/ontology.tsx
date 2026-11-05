@@ -49,6 +49,14 @@ const SAYS: SelectOption[] = [
 const saysExtra = (says: Says, holds: DetailDef['kind']): Pick<DetailDef, 'identity' | 'onEntity' | 'changes'> =>
   holds !== 'text' && holds !== 'number' ? { identity: false } : says === 'fixed' ? { identity: true } : says === 'changes' ? { identity: true, onEntity: false, changes: true } : { identity: false };
 
+type Known = 'entity' | 'facts' | 'many';
+const KNOWN: SelectOption[] = [
+  { value: 'entity', label: 'Typed on the entity' },
+  { value: 'facts', label: 'Through facts, one value at a time' },
+  { value: 'many', label: 'Through facts, several values at once' },
+];
+const knownExtra = (known: Known): Pick<DetailDef, 'onEntity' | 'many'> => (known === 'many' ? { onEntity: false, many: true } : known === 'facts' ? { onEntity: false } : {});
+
 /** What a term or change is, in a word. */
 const whatWord = (kind: 'class' | 'type' | 'detail' | 'relation') => (kind === 'relation' ? 'a kind of link' : kind === 'detail' ? 'a detail' : 'a kind of thing');
 const capital = (words: string) => words.replace(/^\w/, (x) => x.toUpperCase());
@@ -70,6 +78,8 @@ interface TermForm {
   says: Says;
   /** For the whole organisation, or only the team floor the admin stands on and the teams under it. */
   keptFor: 'org' | 'team';
+  /** Where a detail that doesn't say which one is known: typed on the entity, or through facts, one or several at once. */
+  known: Known;
   from: string;
   to: string;
 }
@@ -168,6 +178,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
       holds: 'text',
       says: 'no',
       keptFor: 'org',
+      known: 'entity',
       from: (term.domain ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
       to: (term.range ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
     });
@@ -191,6 +202,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
       holds: 'text',
       says: 'no',
       keptFor: 'org',
+      known: 'entity',
       from: s.op === 'add-relation' ? (s.relation.from[0] ?? '') : '',
       to: '',
     });
@@ -212,6 +224,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
       holds: 'text',
       says: 'no',
       keptFor: 'org',
+      known: 'entity',
       from: '',
       to: '',
     });
@@ -223,7 +236,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
     const packed = 'candidate' in f.via ? { pack: 'augur', packTerm: f.via.candidate.name } : { pack: 'augur', packTerm: name };
     const floor = f.keptFor === 'team' && teamFloor ? { floor: teamFloor } : {};
     if (f.what === 'type') return { op: 'add-type', type: { key, label: name, plural: values.plural?.trim() || pluralOf(name), abstract: false, icon: f.icon, ...packed, ...(f.parent ? { parent: f.parent } : {}), ...floor } };
-    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, ...saysExtra(f.keptFor === 'team' ? 'no' : f.says, f.holds), ...holdsExtra(f.holds, values), ...floor } };
+    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, ...saysExtra(f.keptFor === 'team' ? 'no' : f.says, f.holds), ...(f.keptFor === 'team' || f.says === 'no' || (f.holds !== 'text' && f.holds !== 'number') ? knownExtra(f.known) : {}), ...holdsExtra(f.holds, values), ...floor } };
     return { op: 'add-relation', relation: { key, label: name, inverse: values.inverse.trim(), from: f.from ? [f.from] : [], to: f.to ? [f.to] : [], ...packed } };
   };
 
@@ -326,7 +339,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
                 {t.abstract ? <span className="atlas-note"> a heading only</span> : null}
               </span>
               <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`, ...(t.symbol ? [`Symbol ${t.symbol}`] : []), ...(t.floor ? [`Kept for ${t.floorName ?? 'one team'} and the teams under it`] : [])].join(' · ')}</span>
-              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.changes ? ' (says which one, changes hands)' : d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}${d.floor ? ` (for ${d.floorName ?? 'one team'})` : ''}`).join(', ')}</span> : null}
+              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.changes ? ' (says which one, changes hands)' : d.identity ? ' (says which one)' : d.many ? ' (several, through facts)' : d.onEntity === false ? ' (through facts)' : ''}${d.floor ? ` (for ${d.floorName ?? 'one team'})` : ''}`).join(', ')}</span> : null}
             </div>
             {govern ? (
               <div className="atlas-actions">
@@ -552,6 +565,15 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity, floorNa
                   <Select label="Holds" options={HOLDS} value={f.holds} onChange={(v) => setForm({ ...f, holds: v as DetailDef['kind'] })} />
                   {f.holds === 'quantity' ? <TextField key="unit" name="unit" label="Measured in" required maxLength={24} hint="The unit, as people write it: t, m, knots" /> : null}
                   {f.holds === 'choice' ? <TextField key="values" name="values" label="Values to choose from" required maxLength={2000} hint="At least two, separated by commas" /> : null}
+                  {!('pack' in f.via) && (f.says === 'no' || f.keptFor === 'team' || (f.holds !== 'text' && f.holds !== 'number')) ? (
+                    <Select
+                      label="Known"
+                      options={KNOWN}
+                      value={f.known}
+                      onChange={(v) => setForm({ ...f, known: v as Known })}
+                      hint={f.known === 'many' ? 'Like a person’s languages: each value is its own fact, with its own dates and sources.' : f.known === 'facts' ? 'Like a vessel’s flag: observed and accepted floor by floor, over time.' : undefined}
+                    />
+                  ) : null}
                   {!('pack' in f.via) && (f.holds === 'text' || f.holds === 'number') && f.keptFor === 'org' ? (
                     <Select
                       label="Says which one"

@@ -474,9 +474,11 @@ export const accept = async (
   const first = backing[0];
   const floor = floorPrincipal(caller.id, caller.workspace);
   const ontology = await atlas.store.ontology();
-  // A detail has one value at a time on a floor; links may be many.
   const property = propertyOf(ontology, entity.type, first.property);
-  const replaces = property?.kind === 'detail' ? (await atlas.store.currentFacts(entity.id, first.property, floor)).map((f) => f.id) : [];
+  // A detail has one value at a time on a floor, unless it holds several (`many`): then a new value
+  // stands beside the others and replaces only the same value recorded again. Links may be many.
+  const current = property?.kind === 'detail' ? await atlas.store.currentFacts(entity.id, first.property, floor) : [];
+  const replaces = (property?.kind === 'detail' && property.def.many ? current.filter((f) => f.value === first.value) : current).map((f) => f.id);
   // A key that changes hands (an MMSI): no other entity of a kind that has it may hold the value over the same time.
   const held =
     property?.kind === 'detail' && property.def.changes

@@ -55,6 +55,11 @@ export interface DetailDef {
    * one entity holds a value at any time. Set when the detail is added.
    */
   changes?: boolean;
+  /**
+   * Holds several values at once, as a person's languages or a vessel's former names: known through
+   * facts (`onEntity` false), each value its own fact, so recording one doesn't replace the others.
+   */
+  many?: boolean;
   /** Kept for one team's floor, as a kind can be (TypeDef.floor). Absent: wherever its kind shows. */
   floor?: string;
   floorName?: string;
