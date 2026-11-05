@@ -140,7 +140,9 @@ export function AtlasMap({ api, entities, at, onOpenEntity, about }: AtlasMapPro
     libraries().then(
       ({ ml, pm, css }) => {
         if (!live) return;
-        if (!el.querySelector('style[data-maplibre]')) {
+        // Once per document (or shadow root) the app is drawn in, not once per map opened.
+        const root = el.getRootNode() as Document | ShadowRoot;
+        if (!root.querySelector('style[data-maplibre]')) {
           const style = document.createElement('style');
           style.dataset.maplibre = '';
           style.textContent = css;
