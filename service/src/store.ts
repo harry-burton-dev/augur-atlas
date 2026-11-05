@@ -395,6 +395,13 @@ export const migrations: { id: string; sql: string }[] = [
       -- A kind may carry a military symbol code (ADR 0070), drawn by the frontend in place of its icon.
       alter table atlas.ontology_types add column symbol text;`,
   },
+  {
+    id: '014_binding_cursors',
+    sql: `
+      -- Where Data Atlas has read each app's bindings up to (ADR 0066), one cursor per app and type,
+      -- so an app or type the registry lists later is read from its start. 013 is the map's.
+      create table atlas.binding_cursors (stream text primary key, seq text not null);`,
+  },
 ];
 
 /**
@@ -965,6 +972,16 @@ export class PgAtlasStore {
 
   async saveEventCursor(seq: string) {
     await this.pool.query('insert into atlas.event_cursor (id, seq) values (1, $1) on conflict (id) do update set seq = $1', [seq]);
+  }
+
+  /** Where Data Atlas has read one stream of bindings up to (`mandate.intent`). */
+  async bindingCursor(stream: string): Promise<string | undefined> {
+    const { rows } = await this.pool.query<{ seq: string }>('select seq from atlas.binding_cursors where stream = $1', [stream]);
+    return rows[0]?.seq;
+  }
+
+  async saveBindingCursor(stream: string, seq: string) {
+    await this.pool.query('insert into atlas.binding_cursors (stream, seq) values ($1, $2) on conflict (stream) do update set seq = $2', [stream, seq]);
   }
 
   /** Notes that something in another app uses an entity. Doing it twice does no harm. */

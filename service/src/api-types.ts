@@ -622,6 +622,8 @@ export interface EntityUses {
   intents: { app: string; id: string; role: string; since: string; floorName?: string }[];
   /** Records in another app linked to it: a library, folder or document, by its level of the shape (a file is a document). */
   records: { app: string; id: string; level: string; role: string; since: string; floorName?: string }[];
+  /** Things any other app binds to it (ADR 0066), by the kind its events name. Optional: an older Data Atlas leaves it out. */
+  others?: { app: string; id: string; kind: string; role: string; since: string; floorName?: string }[];
   documents: MentionedIn[];
 }
 
