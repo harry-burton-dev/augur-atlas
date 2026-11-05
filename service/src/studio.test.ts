@@ -78,6 +78,16 @@ describe('packs', () => {
     expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['In service', 'Laid up'] })).toBeUndefined();
   });
 
+  it('lets only an identity key known through facts pass from one thing to another', () => {
+    const o: Ontology = { version: 1, types: [{ key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [] }], relations: [] };
+    const add = (detail: Ontology['types'][number]['details'][number]) => checkChanges(o, [{ op: 'add-detail', type: 'vessel', detail }]);
+    expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: true, onEntity: false, changes: true })).toBeUndefined();
+    expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: false, onEntity: false, changes: true })).toBe('Only an identity key can pass from one thing to another.');
+    expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: true, changes: true })).toMatch(/known through facts, each with its dates/);
+    expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: true, onEntity: false })).toMatch(/unless it passes from one thing to another/);
+    expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'date', identity: true, onEntity: false, changes: true })).toMatch(/holds text or a number/);
+  });
+
   it('checks a military symbol code’s form, and lets one be taken away', () => {
     const o: Ontology = { version: 1, types: [{ key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [] }], relations: [] };
     expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', symbol: 'SFSPCLFF--' }])).toBeUndefined();
@@ -201,5 +211,27 @@ describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
     expect((await vessel()).symbol).toBe('SFSPCLFF--');
     await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'vessel', symbol: '' }] });
     expect((await vessel()).symbol).toBeUndefined();
+  });
+  it('lets one entity at a time hold a key that changes hands, saying who holds it when', async () => {
+    const LEAD: Caller = { ...ADMIN, workspace: { ...ORG, role: 'lead' } };
+    const changes = [{ op: 'add-detail', type: 'vessel', detail: { key: 'call-held', label: 'Call sign', kind: 'text', identity: true, onEntity: false, changes: true } }];
+    expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes })).statusCode).toBe(200);
+    const vessel = (await call('GET', '/v1/ontology', SAM)).json().types.find((t: { key: string }) => t.key === 'vessel');
+    expect(vessel.details).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'call-held', identity: true, onEntity: false, changes: true })]));
+
+    const add = async (label: string) => (await call('POST', '/v1/entities', LEAD, { type: 'vessel', label })).json() as { id: string };
+    const [first, second] = [await add('Old Hull'), await add('New Hull')];
+    const seen = (id: string) => call('POST', `/v1/entities/${id}/observations`, LEAD, { property: 'call-held', value: 'ABCD7', source: { kind: 'person' } });
+    const hold = async (id: string, validFrom: string, validTo?: string) =>
+      call('POST', `/v1/entities/${id}/facts`, LEAD, { backedBy: [(await seen(id)).json().observation.id], validFrom, ...(validTo ? { validTo } : {}) });
+
+    expect((await hold(first.id, '2020-01-01', '2024-01-01')).statusCode).toBe(201);
+    const clash = await hold(second.id, '2023-06-01');
+    expect(clash.statusCode).toBe(409);
+    expect(clash.json()).toMatchObject({ error: 'key-held', holder: { id: first.id }, message: 'Call sign ABCD7 is Old Hull’s from 2020-01-01 until 2024-01-01. Only one thing holds it at a time: end that record first, or give this one dates that don’t overlap.' });
+    // Once the first has let it go, the second may hold it.
+    expect((await hold(second.id, '2024-01-01')).statusCode).toBe(201);
+    // Who holds it now, by the key.
+    expect((await store.byKey('call-held', 'abcd7', ['org'])).map((e) => e.id)).toEqual([second.id]);
   });
 });
