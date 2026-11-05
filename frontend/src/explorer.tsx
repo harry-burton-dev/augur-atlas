@@ -5,6 +5,7 @@ import type FA2Layout from 'graphology-layout-forceatlas2/worker';
 import { Button, Checkbox, CheckboxGroup, DateField, Heading, PageHead, Ref, Select, State, Toggle, cx, type SelectOption } from '@augur/app-kit';
 import { isIntentCancelled } from '@augur/mfe-sdk';
 import { PAST_DAYS, floorWords, type AtlasApi, type IntentLens, type PickedIntent, type Fold, type GraphNode, type Ontology, type Subgraph } from './api.js';
+import { AtlasMap } from './map.js';
 import { FOLD, HIDDEN, foldsOf, hiddenNear, hoverDrawer, linksOf, rings, syncGraph, widen, type Explored, type Look } from './graph.js';
 
 /** Links drawn from each entity before the rest fold into a count. */
@@ -92,7 +93,7 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
   const [error, setError] = useState('');
   /** Why the centre can't be seen from here. */
   const [unseen, setUnseen] = useState('');
-  const [view, setView] = useState<'graph' | 'list'>(drawable ? 'graph' : 'list');
+  const [view, setView] = useState<'graph' | 'list' | 'map'>(drawable ? 'graph' : 'list');
   /** The intent being explored within, and what it binds. */
   const [lens, setLens] = useState<IntentLens>();
   const [lensGaps, setLensGaps] = useState<LensGaps>();
@@ -531,6 +532,17 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
             ) : (
               <p className="atlas-note">This browser can’t draw the graph (it needs WebGL), so it shows as a list.</p>
             )}
+            <Button
+              kind="ghost"
+              size="sm"
+              onPress={() => {
+                if (view === 'graph') stopDrawing();
+                graph.current.clear();
+                setView(view === 'map' ? (drawable ? 'graph' : 'list') : 'map');
+              }}
+            >
+              {view === 'map' ? 'Back to the links' : 'Show on a map'}
+            </Button>
             {busy || loading ? (
               <span className="atlas-note" role="status">
                 Opening…
@@ -542,7 +554,9 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
               </span>
             ) : null}
           </div>
-          {view === 'graph' ? (
+          {view === 'map' ? (
+            <AtlasMap api={api} entities={[...(open?.nodes.keys() ?? [])]} {...(at ? { at: new Date(at).toISOString() } : {})} about={`what’s around ${open?.nodes.get(centre)?.ref.label ?? 'this entity'}`} onOpenEntity={onOpenEntity} />
+          ) : view === 'graph' ? (
             <>
               <div ref={canvas} className="atlas-graph-canvas" role="img" aria-label={`The graph around ${open?.nodes.get(centre)?.ref.label ?? 'this entity'}. The same graph is offered as a list.`} />
               {legend}

@@ -23,6 +23,8 @@ import type {
   Fact,
   FactBody,
   Knowledge,
+  MapInfo,
+  MapPoints,
   MentionDecisionBody,
   NewProposal,
   ObservationBody as NewObservation,
@@ -68,6 +70,9 @@ export type {
   GraphNode,
   GraphUnseen,
   Knowledge,
+  MapInfo,
+  MapPoint,
+  MapPoints,
   MatchView,
   Matching,
   Mention,
@@ -370,6 +375,25 @@ export class AtlasApi {
   /** The graph around some entities from this floor, a ring at a time. */
   subgraph(query: SubgraphQuery) {
     return this.call<Subgraph>('POST', '/subgraph', { ...query, seeds: query.seeds.map((id) => ({ id })) });
+  }
+
+  /** Whether this deployment has a base map, and the credit its data needs. */
+  mapInfo() {
+    return this.call<MapInfo>('GET', '/map');
+  }
+
+  /** Where these entities are, as seen from this floor (and at a time, when given). */
+  mapPoints(entities: string[], at?: string) {
+    return this.call<MapPoints>('POST', '/map/points', { entities, ...(at ? { at } : {}) });
+  }
+
+  /** Part of the deployment's base map file, for the map's PMTiles reader: through the gateway, as the person. */
+  async mapBytes(offset: number, length: number, signal?: AbortSignal): Promise<ArrayBuffer> {
+    const res = await this.ctx.fetch(`${this.names.base.replace(/\/+$/, '')}/map/tiles`, { headers: { range: `bytes=${offset}-${offset + length - 1}` }, ...(signal ? { signal } : {}) });
+    if (res.status !== 206 && res.status !== 200) throw new AppError(`The base map couldn’t be read (it answered ${res.status}).`, res.status);
+    const data = await res.arrayBuffer();
+    // A server that ignored the range sent the whole file: take the part asked for.
+    return res.status === 200 ? data.slice(offset, offset + length) : data;
   }
 }
 
