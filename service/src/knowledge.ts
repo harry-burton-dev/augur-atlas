@@ -21,6 +21,8 @@ export interface Atlas {
   store: PgAtlasStore;
   onFloor(req: FastifyRequest, reply: FastifyReply): OnFloor | undefined;
   sight(caller: OnFloor): Promise<{ principals: string[]; floors: string[] }>;
+  /** The ontology from where the caller stands; `all` gives an admin every team's kinds too, named. */
+  ontologySeen(caller: OnFloor, all?: boolean): Promise<Ontology>;
   nameFloors(caller: OnFloor, floors: readonly string[]): Promise<(floor: string) => string>;
   seen(req: FastifyRequest, reply: FastifyReply, id: string): Promise<{ caller: OnFloor; entity: Entity } | undefined>;
   recorded(entry: Parameters<Audit>[0]): unknown;
@@ -245,7 +247,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       if (req.body.accept && !leadsHere(caller)) return reply.code(403).send({ error: 'cannot-accept', message: LEADS_ONLY });
       const source = sourceOf(req.body.source);
       if (typeof source === 'string') return reply.code(400).send({ error: 'bad-source', message: source });
-      const ontology = await store.ontology();
+      const ontology = await atlas.ontologySeen(caller);
       const said = await sayable(atlas, caller, ontology, entity, req.body);
       if ('error' in said) return reply.code(said.status).send({ error: said.error, message: said.message });
       const observedAt = when(req.body.observedAt);

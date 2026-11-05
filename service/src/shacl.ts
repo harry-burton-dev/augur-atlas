@@ -257,8 +257,11 @@ export const checkRoutes = (app: FastifyInstance, atlas: Atlas) => {
     return { facts, ends, visible: (e: Entity) => floors.includes(e.floor) };
   };
 
-  app.get('/ontology/shacl', async (_req, reply) => {
-    const ontology = await store.ontology();
+  app.get('/ontology/shacl', async (req, reply) => {
+    // Only what shows from where the caller stands: a team's kinds stay that team's.
+    const caller = atlas.onFloor(req, reply);
+    if (!caller) return reply;
+    const ontology = await atlas.ontologySeen(caller);
     reply.header('content-type', 'text/turtle; charset=utf-8').header('content-disposition', `attachment; filename="data-atlas-shapes-v${ontology.version}.ttl"`);
     return shaclTurtle(ontology);
   });

@@ -4,13 +4,14 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { checkChanges, keyFrom, pluralOf } from './studio.ts';
+import { ontologyFor } from './ontology.ts';
 import { packFromTurtle } from './packs.ts';
 import type { People } from './people.ts';
 import { PgAtlasStore } from './store.ts';
 import type { Ontology } from './ontology.ts';
 
 const people: People = {
-  principals: async (person) => [`person:${person}`, 'org'],
+  principals: async (person, workspace) => (workspace?.kind === 'team' ? [`person:${person}`, `team:${workspace.id}`, `tree:${workspace.id}`, 'org'] : [`person:${person}`, 'org']),
   teamPath: async (team) => [team],
   teamNames: async () => new Map(),
   orgName: async () => 'Harbour Group',
@@ -86,6 +87,33 @@ describe('packs', () => {
     expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: true, changes: true })).toMatch(/known through facts, each with its dates/);
     expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'text', identity: true, onEntity: false })).toMatch(/unless it passes from one thing to another/);
     expect(add({ key: 'mmsi-held', label: 'MMSI', kind: 'date', identity: true, onEntity: false, changes: true })).toMatch(/holds text or a number/);
+  });
+
+  it('keeps a team’s kinds and details for that team down, and widens them only to the organisation', () => {
+    const o: Ontology = {
+      version: 1,
+      types: [
+        { key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [{ key: 'berth', label: 'Usual berth', kind: 'text', identity: false, floor: 'tree:t-mar' }] },
+        { key: 'drone', label: 'Drone', plural: 'Drones', abstract: false, icon: 'plane', pack: 'augur', packTerm: 'drone', floor: 'tree:t-mar', details: [] },
+        { key: 'quad', label: 'Quadcopter', plural: 'Quadcopters', parent: 'drone', abstract: false, icon: 'plane', pack: 'augur', packTerm: 'quad', details: [] },
+      ],
+      relations: [
+        { key: 'launched-from', label: 'Launched from', inverse: 'Launches', from: ['drone'], to: ['vessel'], pack: 'augur', packTerm: 'launched-from' },
+        { key: 'escorts', label: 'Escorts', inverse: 'Escorted by', from: ['vessel', 'drone'], to: ['vessel'], pack: 'augur', packTerm: 'escorts' },
+      ],
+    };
+    const team = ontologyFor(o, ['person:sam', 'team:t-mar', 'tree:t-mar', 'org']);
+    expect(team.types.map((t) => t.key)).toEqual(['vessel', 'drone', 'quad']);
+    const org = ontologyFor(o, ['person:lee', 'org']);
+    expect(org.types.map((t) => t.key)).toEqual(['vessel']);
+    expect(org.types[0].details).toEqual([]);
+    expect(org.relations.map((r) => [r.key, r.from])).toEqual([['escorts', ['vessel']]]);
+
+    expect(checkChanges(o, [{ op: 'add-type', type: { key: 'fixed-wing', label: 'Fixed wing', plural: 'Fixed wings', parent: 'drone', abstract: false, icon: 'plane', pack: 'augur', packTerm: 'fixed-wing', floor: 'tree:t-fin' } }])).toMatch(/kept for another team’s floor/);
+    expect(checkChanges(o, [{ op: 'add-detail', type: 'vessel', detail: { key: 'pennant', label: 'Pennant', kind: 'text', identity: true, floor: 'tree:t-mar' } }])).toMatch(/can’t be kept for one team/);
+    expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', floor: '' }])).toBe('Vessel is already the whole organisation’s.');
+    expect(checkChanges(o, [{ op: 'edit-type', key: 'drone', floor: '' }])).toBeUndefined();
+    expect(checkChanges(o, [{ op: 'edit-detail', type: 'vessel', key: 'berth', floor: '' }])).toBeUndefined();
   });
 
   it('checks a military symbol code’s form, and lets one be taken away', () => {
@@ -233,5 +261,26 @@ describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
     expect((await hold(second.id, '2024-01-01')).statusCode).toBe(201);
     // Who holds it now, by the key.
     expect((await store.byKey('call-held', 'abcd7', ['org'])).map((e) => e.id)).toEqual([second.id]);
+  });
+  it('lets an admin on a team’s floor keep a kind for that team, shown from there down, until it’s widened', async () => {
+    const MAR = { id: 't-mar', kind: 'team', role: 'lead' } as const;
+    const ADMIN_MAR: Caller = { ...ADMIN, workspace: MAR };
+    const drone = { key: 'drone', label: 'Drone', plural: 'Drones', abstract: false, icon: 'plane', pack: 'augur', packTerm: 'drone', floor: 'tree:t-mar' };
+    // Only from the team floor itself.
+    const elsewhere = await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'add-type', type: drone }] });
+    expect(elsewhere.json().message).toBe('Stand on a team’s floor to keep a kind or detail for that team.');
+    expect((await call('POST', '/v1/ontology/changes', ADMIN_MAR, { changes: [{ op: 'add-type', type: drone }] })).statusCode).toBe(200);
+
+    const kinds = async (caller: Caller) => (await call('GET', '/v1/ontology', caller)).json().types.map((t: { key: string }) => t.key);
+    expect(await kinds({ ...SAM, workspace: MAR })).toContain('drone');
+    expect(await kinds(SAM)).not.toContain('drone');
+    // Admins see every team's kinds in the studio, named.
+    expect((await call('GET', '/v1/ontology', ADMIN)).json().types.find((t: { key: string }) => t.key === 'drone')).toMatchObject({ floor: 'tree:t-mar' });
+    // Nobody records one where it doesn't show.
+    expect((await call('POST', '/v1/entities', SAM, { type: 'drone', label: 'Skylark' })).statusCode).toBe(400);
+    expect((await call('POST', '/v1/entities', { ...SAM, workspace: MAR }, { type: 'drone', label: 'Skylark' })).statusCode).toBe(201);
+
+    expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'drone', floor: '' }] })).statusCode).toBe(200);
+    expect(await kinds(SAM)).toContain('drone');
   });
 });

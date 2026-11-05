@@ -55,6 +55,9 @@ export interface DetailDef {
    * one entity holds a value at any time. Set when the detail is added.
    */
   changes?: boolean;
+  /** Kept for one team's floor, as a kind can be (TypeDef.floor). Absent: wherever its kind shows. */
+  floor?: string;
+  floorName?: string;
 }
 
 /**
@@ -93,6 +96,13 @@ export interface TypeDef {
   pack: string;
   packTerm: string;
   packIri?: string;
+  /**
+   * Kept for one team's floor: shows from that team down (`tree:<team>`), set by an admin standing
+   * there. Absent for the whole organisation's kinds. Widening it to the organisation is the only change.
+   */
+  floor?: string;
+  /** The floor's name, for the studio. */
+  floorName?: string;
   details: DetailDef[];
 }
 
@@ -103,9 +113,9 @@ export interface TypeDef {
  */
 export type OntologyChange =
   | { op: 'add-type'; type: Omit<TypeDef, 'details'> }
-  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string; /** An empty string takes the symbol away. */ symbol?: string }
+  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string; /** An empty string takes the symbol away. */ symbol?: string; /** An empty string widens a team's kind to the organisation. */ floor?: '' }
   | { op: 'add-detail'; type: string; detail: DetailDef }
-  | { op: 'edit-detail'; type: string; key: string; label?: string; hint?: string }
+  | { op: 'edit-detail'; type: string; key: string; label?: string; hint?: string; /** An empty string widens a team's detail to the organisation. */ floor?: '' }
   | { op: 'add-relation'; relation: RelationDef }
   | { op: 'edit-relation'; key: string; label?: string; inverse?: string; from?: string[]; to?: string[] };
 
