@@ -1,4 +1,4 @@
-import type { MountContext } from '@augur/mfe-sdk';
+import { AppError, createAppClient, type AppClient, type AppFetcher } from '@augur/app-kit';
 
 import type {
   Adoption,
@@ -29,7 +29,6 @@ import type {
   Packs,
   PackUpload,
   PackView as Pack,
-  Problem,
   ProposalView,
   Raised,
   RelationDef,
@@ -91,32 +90,31 @@ export interface IntentName {
   canOpen: boolean;
 }
 
-/** A refusal, in words people can act on, with what the service said about it. */
-export class AtlasError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code?: string,
-    readonly body: Record<string, unknown> = {},
-  ) {
-    super(message);
-  }
+/** What Data Atlas is called and where its API is, from its manifest. */
+export interface AtlasNames {
+  /** Its name as people read it, for "<name> isn't answering". */
+  appName: string;
+  /** Its API under the gateway, such as `/api/atlas/v1`. */
+  base: string;
 }
 
-/** Data Atlas's service, through the gateway, on the floor the person is standing on. */
-export class AtlasApi {
-  constructor(private readonly fetchOnFloor: MountContext['fetch']) {}
+type Query = Record<string, string | number | string[] | undefined>;
 
-  private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await this.fetchOnFloor(`/api/atlas/v1${path}`, {
-      method,
-      ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
-    });
-    if (!res.ok) {
-      const problem = (await res.json().catch(() => ({}))) as Partial<Problem>;
-      throw new AtlasError(res.status >= 500 || !problem.message ? 'Data Atlas isn’t answering. Try again in a moment.' : problem.message, res.status, problem.error, problem);
-    }
-    return (await res.json()) as T;
+/** Data Atlas's service, through the gateway, on the floor the person is standing on. Every refusal is an AppError. */
+export class AtlasApi {
+  private readonly client: AppClient;
+
+  constructor(
+    private readonly ctx: AppFetcher,
+    private readonly names: AtlasNames,
+  ) {
+    this.client = createAppClient(ctx, names);
+  }
+
+  private call<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, query?: Query): Promise<T> {
+    const options = { ...(body === undefined ? {} : { body }), ...(query ? { query: Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '')) } : {}) };
+    const send = method === 'GET' ? this.client.get : method === 'POST' ? this.client.post : this.client.patch;
+    return (send as (p: string, o: object) => Promise<unknown>)(path, options) as Promise<T>;
   }
 
   ontology() {
@@ -125,10 +123,7 @@ export class AtlasApi {
 
   /** What shows from this floor; `type` takes one kind or several, each with its subkinds. */
   entities(query: { q?: string; type?: string | string[]; limit?: number; offset?: number } = {}) {
-    const params = new URLSearchParams(
-      Object.entries(query).flatMap(([k, v]) => (v === undefined || v === '' ? [] : (Array.isArray(v) ? v : [v]).map((one) => [k, String(one)]))),
-    );
-    return this.call<EntityList>('GET', `/entities${params.size ? `?${params}` : ''}`);
+    return this.call<EntityList>('GET', '/entities', undefined, query);
   }
 
   entity(id: string) {
@@ -149,8 +144,7 @@ export class AtlasApi {
 
   /** What's known about an entity: true at `at`, as recorded by `known` (both now when left out). */
   knowledge(id: string, when: { at?: string; known?: string } = {}) {
-    const params = new URLSearchParams(Object.entries(when).filter((e): e is [string, string] => !!e[1]));
-    return this.call<Knowledge>('GET', `/entities/${encodeURIComponent(id)}/knowledge${params.size ? `?${params}` : ''}`);
+    return this.call<Knowledge>('GET', `/entities/${encodeURIComponent(id)}/knowledge`, undefined, when);
   }
 
   observe(id: string, observation: NewObservation) {
@@ -183,7 +177,7 @@ export class AtlasApi {
 
   /** This floor's Triage: open proposals, or those finished and withdrawn. */
   proposals(state: 'open' | 'closed' = 'open') {
-    return this.call<Triage>('GET', `/proposals?state=${state}`);
+    return this.call<Triage>('GET', '/proposals', undefined, { state });
   }
 
   proposal(id: string) {
@@ -251,8 +245,10 @@ export class AtlasApi {
 
   /** The ontology as OWL in Turtle, to save. */
   async owl() {
-    const res = await this.fetchOnFloor('/api/atlas/v1/ontology/owl');
-    if (!res.ok) throw new AtlasError('Data Atlas isn’t answering. Try again in a moment.', res.status);
+    const res = await this.ctx.fetch(`${this.names.base}/ontology/owl`).catch((err: unknown) => {
+      throw AppError.from(err, this.names);
+    });
+    if (!res.ok) throw await AppError.fromResponse(res, this.names);
     return res.text();
   }
 
@@ -267,8 +263,8 @@ export class AtlasApi {
 
   /** Asks Mandate, as the person, to name intents: those they can't open come back unnamed. */
   async nameIntents(ids: string[]): Promise<IntentName[]> {
-    const res = await this.fetchOnFloor('/api/mandate/v1/refs/resolve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
-    if (!res.ok) throw new AtlasError('Mandate isn’t open to you on this floor, so the intents can’t be named.', res.status);
+    const res = await this.ctx.fetch('/api/mandate/v1/refs/resolve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
+    if (!res.ok) throw new AppError('Mandate isn’t open to you on this floor, so the intents can’t be named.', res.status);
     return ((await res.json()) as { refs: IntentName[] }).refs;
   }
 
@@ -302,7 +298,7 @@ export const placeFor = (path: string): Place => {
 export const pathFor = (place: Place) => {
   switch (place.page) {
     case 'entity':
-      return `/entities/${encodeURIComponent(place.id)}`;
+      return `/entities/${encodeURIComponent(place.id)}${place.explain ? '?explain=true' : ''}`;
     case 'explore':
       return `/explore/${encodeURIComponent(place.id)}`;
     case 'proposal':

@@ -6,7 +6,7 @@ import { MultiDirectedGraph } from 'graphology';
 import { entityLine, placeFor, pathFor, typeTree, whyShown, type Entity, type Ontology, type ProposalView, type Subgraph } from './api.js';
 import { kindsOffered } from './picker.js';
 import { foldsOf, hiddenNear, rings, syncGraph, widen } from './graph.js';
-import app, { addressFor, placeForIntent, proposalOffer } from './entry.js';
+import app, { placeForIntent, proposalOffer } from './entry.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,11 +99,16 @@ const answering = (routes: Record<string, () => Response>) =>
     return route ? routes[route]() : new Response(null, { status: 404 });
   });
 
+/** The JSON a call sent, whatever form its body took. */
+const bodyOf = async (init?: RequestInit) => JSON.parse(await new Response(init?.body).text()) as unknown;
+
 /** Lets the service's answers land and React draw them. */
 const settle = async (rounds = 8) => {
   for (let i = 0; i < rounds; i++) await act(async () => new Promise((r) => setTimeout(r, 5)));
 };
-const mounted = async (c: MountContext) => {
+/** Mounts the app as the shell does: the address bar ends with the path it's given, below where it's mounted. */
+const mounted = async (c: MountContext, at = '/@maritime/atlas') => {
+  window.history.replaceState(null, '', `${at}${c.path === '/' ? '' : c.path}`);
   const el = document.body.appendChild(document.createElement('div'));
   await act(async () => void (await app.mount(el, c)));
   await settle();
@@ -143,7 +148,29 @@ describe('places', () => {
     expect(placeFor('/explore/ent_01')).toEqual({ page: 'explore', id: 'ent_01' });
     expect(pathFor({ page: 'explore', id: 'ent_01' })).toBe('/explore/ent_01');
     expect(pathFor({ page: 'entity', id: 'ent_01' })).toBe('/entities/ent_01');
-    expect(addressFor('/@maritime/atlas/entities', '/entities', { page: 'entity', id: 'ent_01' })).toBe('/@maritime/atlas/entities/ent_01');
+    expect(pathFor({ page: 'entity', id: 'ent_01', explain: true })).toBe('/entities/ent_01?explain=true');
+  });
+
+  it('keeps the address bar on the place shown, below where the shell mounted it', async () => {
+    const fetch = answering({
+      '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
+      '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
+      '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], records: [], documents: [] }),
+      '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
+      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['tree:t-mar'], seeing: ['Maritime desk'] }),
+    });
+    const el = await open(ctx(fetch, '/entities'));
+    await press(el.querySelector('.quill-list-row'));
+    expect(window.location.pathname).toBe('/@maritime/atlas/entities/ent_01');
+    expect(pageTitle(el)).toBe('Northern Tern');
+  });
+
+  it('opens where entity.open and entity.explain ask, saying so in the address', async () => {
+    const REF = { kind: 'entity', id: 'ent_01JBX7Q2W3E4R5T6Y7V8H9Q0PA', type: 'vessel', label: 'Northern Tern' };
+    const el = await open(ctx(answering({ '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY), [`/api/atlas/v1/entities/${REF.id}/knowledge`]: () => Response.json(KNOWN), [`/api/atlas/v1/entities/${REF.id}/used-by`]: () => Response.json({ intents: [], records: [], documents: [] }), [`/api/atlas/v1/entities/${REF.id}`]: () => Response.json({ ...TERN, id: REF.id }) }), '/', { intent: { type: 'entity.explain', payload: REF } }));
+    expect(window.location.pathname).toBe(`/@maritime/atlas/entities/${REF.id}`);
+    expect(window.location.search).toBe('?explain=true');
+    expect(el.textContent).toMatch(/Why it shows here/);
   });
 
   it('lays kinds out as a tree and says what an entity is in a line', () => {
@@ -322,7 +349,7 @@ describe('explorer', () => {
     const fetch = vi.fn(async (path: string, init?: RequestInit) => {
       if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
       if (path.startsWith('/api/atlas/v1/subgraph')) {
-        bodies.push(JSON.parse(String(init?.body)));
+        bodies.push(await bodyOf(init));
         return Response.json(asked++ ? MORE_HALDEN : AROUND_TERN);
       }
       return new Response(null, { status: 404 });
@@ -389,7 +416,7 @@ describe('triage', () => {
     const fetch = vi.fn(async (path: string, init?: RequestInit) => {
       if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
       if (path === '/api/atlas/v1/proposals/prp_1/mentions/m1') {
-        decided = JSON.parse(String(init?.body));
+        decided = await bodyOf(init);
         return Response.json({ ...PROPOSAL, left: 0, mentions: [{ ...PROPOSAL.mentions[0], decision: { as: 'link', entity: PROPOSAL.mentions[0].matches[0].entity } }], can: { decide: true, finish: true, withdraw: true } });
       }
       if (path.startsWith('/api/atlas/v1/proposals/prp_1')) return Response.json(PROPOSAL);
@@ -439,7 +466,7 @@ describe('triage', () => {
     const fetch = vi.fn(async (path: string, init?: RequestInit) => {
       if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
       if (path === '/api/atlas/v1/proposals' && init?.method === 'POST') {
-        sent = JSON.parse(String(init.body));
+        sent = await bodyOf(init);
         return Response.json({ ...PROPOSAL, queue: 'Maritime desk' }, { status: 201 });
       }
       return new Response(null, { status: 404 });

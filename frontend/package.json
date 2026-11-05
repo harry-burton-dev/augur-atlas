@@ -11,8 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.3.0",
-    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^1.10.0",
+    "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.7.2",
+    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^1.12.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "react": "^19.3.1",

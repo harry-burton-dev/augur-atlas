@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { DocumentRef, UnitRef } from '@augur/mfe-sdk';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { openDocument, openUnit, pickDocument, type DocumentRef, type MountContext, type UnitRef } from '@augur/mfe-sdk';
 import {
   AppFrame,
   Button,
+  isAppError,
+  place as placeAt,
+  placeRoutes,
+  useAppContext,
+  type AppProps,
   Details,
   Dialog,
   List,
@@ -20,7 +25,8 @@ import {
   type PageAction,
   type SelectOption,
 } from '@augur/app-kit';
-import { AtlasError, entityLine, onEntity, typeTree, whyShown, type AtlasApi, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
+import manifest from '../../manifest.json';
+import { AtlasApi, entityLine, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
 import { MergedNote } from './merged.js';
@@ -37,7 +43,6 @@ export interface AtlasAppProps {
   api: AtlasApi;
   floorName: string;
   floorKind: 'personal' | 'team' | 'org';
-  place: Place;
   /** Who is looking: Triage says which proposals are theirs. */
   userId: string;
   /** Asks the person for a document, for an observation's source (the SDK's pickDocument). */
@@ -48,8 +53,6 @@ export interface AtlasAppProps {
   openUnit?: (ref: UnitRef) => void;
   /** Opens an intent in Mandate (its aim.open). */
   openIntent?: (id: string) => void;
-  /** The person moved within the app. */
-  onPlace?: (place: Place) => void;
 }
 
 /**
@@ -57,8 +60,10 @@ export interface AtlasAppProps {
  * floor the person is standing on. A floor shows what is kept on it and on the
  * floors above it; whatever can't be seen or done says why (explain, never hide).
  */
-export function AtlasApp({ api, floorName, floorKind, place: start, userId, pickDocument, openDocument, openUnit, openIntent, onPlace }: AtlasAppProps) {
-  const [place, setPlace] = useState<Place>(start);
+export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, openDocument, openUnit, openIntent }: AtlasAppProps) {
+  // Where the person is comes from the address, so a place can be shared and Back goes to the last one.
+  const place = usePlace();
+  const goTo = useGoTo();
   const [ontology, setOntology] = useState<Ontology>();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [total, setTotal] = useState(0);
@@ -84,10 +89,7 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
   };
   useEffect(() => () => clearTimeout(searching.current), []);
 
-  const move = (to: Place) => {
-    setPlace(to);
-    onPlace?.(to);
-  };
+  const move = goTo;
 
   const list = useCallback(
     async (query: string, kind: string) => {
@@ -115,7 +117,7 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
           setDialog(to.page === 'new' ? 'new' : undefined);
         }
       } catch (err) {
-        if (err instanceof AtlasError && err.code === 'unseen') setUnseen(err.message);
+        if (isAppError(err) && err.code === 'unseen') setUnseen(err.message);
         else setError((err as Error).message);
       } finally {
         setLoading(false);
@@ -151,8 +153,8 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
 
   /** Says a refusal; an identity key someone else holds offers the entity that has it, when it can be seen. */
   const refusal = (err: unknown): never => {
-    if (err instanceof AtlasError && err.code === 'key-taken') {
-      const holder = err.body.holder as { id: string; hidden?: boolean } | undefined;
+    if (isAppError(err) && err.code === 'key-taken') {
+      const holder = err.problem.holder as { id: string; hidden?: boolean } | undefined;
       if (holder && !holder.hidden) {
         setDialog(undefined);
         move({ page: 'entity', id: holder.id });
@@ -438,10 +440,105 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
   return (
     <div className="atlas-app">
       {/* The explorer takes the width it's given: a graph needs room. */}
-      <AppFrame app={{ name: 'Data Atlas', icon: 'atlas' }} onFront={() => move({ page: 'entities' })} rail={rail} railLabel="Data Atlas" measure={place.page === 'explore' ? 'full' : 'wide'} busy={loading} screen={placeKey}>
+      <AppFrame app={{ name: manifest.name, icon: 'atlas' }} onFront={() => move({ page: 'entities' })} rail={rail} railLabel="Data Atlas" measure={place.page === 'explore' ? 'full' : 'wide'} busy={loading} screen={placeKey}>
         {main}
       </AppFrame>
       {dialogs()}
     </div>
+  );
+}
+
+/**
+ * Data Atlas's places on the address bar, below its route. It keeps what it has loaded (the ontology, the
+ * list as filtered) in one frame across them, so each place only names an address: the frame reads which
+ * one is open. Anywhere else inside the app is the list.
+ */
+const Here = () => null;
+export const places = placeRoutes(
+  {
+    front: placeAt('/', Here),
+    entities: placeAt('/entities', Here),
+    new: placeAt('/entities/new', Here),
+    entity: placeAt('/entities/:id', Here, { explain: 'boolean' }),
+    explore: placeAt('/explore/:id', Here),
+    triage: placeAt('/triage', Here),
+    proposal: placeAt('/triage/:id', Here),
+    ontology: placeAt('/ontology', Here),
+  },
+  { NotFound: Here },
+);
+
+/** The place the address shows. */
+export function usePlace(): Place {
+  const isNew = places.new.useOpen();
+  const isEntity = places.entity.useOpen();
+  const isExplore = places.explore.useOpen();
+  const isTriage = places.triage.useOpen();
+  const isProposal = places.proposal.useOpen();
+  const isOntology = places.ontology.useOpen();
+  const { id } = places.entity.useParams() as { id?: string };
+  const { explain } = places.entity.useSearch();
+  if (isNew) return { page: 'new' };
+  if (isEntity && id) return { page: 'entity', id, ...(explain ? { explain: true } : {}) };
+  if (isExplore && id) return { page: 'explore', id };
+  if (isProposal && id) return { page: 'proposal', id };
+  if (isTriage) return { page: 'triage' };
+  if (isOntology) return { page: 'ontology' };
+  return { page: 'entities' };
+}
+
+/** Goes to a place, as a new step in the history. */
+function useGoTo() {
+  const go = {
+    entities: places.entities.useGo(),
+    new: places.new.useGo(),
+    entity: places.entity.useGo(),
+    explore: places.explore.useGo(),
+    triage: places.triage.useGo(),
+    proposal: places.proposal.useGo(),
+    ontology: places.ontology.useGo(),
+  };
+  return (to: Place) => {
+    switch (to.page) {
+      case 'entity':
+        return go.entity({ id: to.id }, to.explain ? { explain: true } : {});
+      case 'explore':
+        return go.explore({ id: to.id });
+      case 'proposal':
+        return go.proposal({ id: to.id });
+      case 'new':
+        return go.new();
+      case 'triage':
+        return go.triage();
+      case 'ontology':
+        return go.ontology();
+      default:
+        return go.entities();
+    }
+  };
+}
+
+/** Mandate's intent for opening an intent (docs/mandate.md). */
+const AIM_OPEN = 'aim.open';
+
+/** The service, through the gateway at Data Atlas's own route, named as its manifest names it. */
+export const apiFor = (ctx: MountContext) => new AtlasApi(ctx, { appName: manifest.name, base: `/api/${manifest.id}/v1` });
+
+/** Data Atlas as the shell mounts it: the app on the floor the person stands on. */
+export function App({ ctx }: AppProps<MountContext>) {
+  const mounted = useAppContext<MountContext>();
+  const c = ctx ?? mounted;
+  const api = useMemo(() => apiFor(c), [c]);
+  return (
+    <AtlasApp
+      api={api}
+      floorName={c.workspace.name}
+      floorKind={c.workspace.kind}
+      userId={c.user.id}
+      pickDocument={() => pickDocument(c, { purpose: 'Where it was read' })}
+      openDocument={(ref) => void openDocument(c, ref)}
+      openUnit={(ref) => void openUnit(c, ref)}
+      openIntent={(id) => void c.raise({ type: AIM_OPEN, payload: { id } })}
+    />
   );
 }
