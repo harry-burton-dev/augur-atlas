@@ -126,6 +126,8 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
         if (d.floor && t.floor && d.floor !== t.floor) return `${t.label} is kept for another team’s floor, so its details are kept for that floor too.`;
         if (d.floor && d.identity) return 'An identity key says which thing it is for everyone, so it can’t be kept for one team.';
         if (d.changes && !d.identity) return 'Only an identity key can pass from one thing to another.';
+        if (d.many && d.onEntity !== false) return 'A detail that holds several values is known through facts, one for each value, not typed on the entity.';
+        if (d.many && d.identity) return 'An identity key holds one value: it says which thing it is.';
         if (d.changes && d.onEntity !== false) return 'A key that passes from one thing to another is known through facts, each with its dates, not typed on the entity.';
         if (d.identity && d.onEntity === false && !d.changes) return 'An identity key is typed on the entity itself, so it can’t be known only through facts, unless it passes from one thing to another over time.';
         if (d.changes && d.kind !== 'text' && d.kind !== 'number') return 'A key that passes from one thing to another holds text or a number.';
@@ -251,6 +253,7 @@ const DETAIL_DEF = {
     onEntity: { type: 'boolean' },
     packIri: { type: 'string', maxLength: 500 },
     changes: { type: 'boolean' },
+    many: { type: 'boolean' },
     floor: FLOOR,
   },
   required: ['key', 'label', 'kind', 'identity'],

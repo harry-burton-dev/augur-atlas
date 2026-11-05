@@ -116,6 +116,13 @@ describe('packs', () => {
     expect(checkChanges(o, [{ op: 'edit-detail', type: 'vessel', key: 'berth', floor: '' }])).toBeUndefined();
   });
 
+  it('lets a detail hold several values only through facts', () => {
+    const o: Ontology = { version: 1, types: [{ key: 'person', label: 'Person', plural: 'People', abstract: false, icon: 'person', pack: 'cco', packTerm: 'Person', details: [] }], relations: [] };
+    const add = (detail: Ontology['types'][number]['details'][number]) => checkChanges(o, [{ op: 'add-detail', type: 'person', detail }]);
+    expect(add({ key: 'languages', label: 'Languages', kind: 'text', identity: false, onEntity: false, many: true })).toBeUndefined();
+    expect(add({ key: 'languages', label: 'Languages', kind: 'text', identity: false, many: true })).toMatch(/known through facts, one for each value/);
+  });
+
   it('checks a military symbol code’s form, and lets one be taken away', () => {
     const o: Ontology = { version: 1, types: [{ key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [] }], relations: [] };
     expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', symbol: 'SFSPCLFF--' }])).toBeUndefined();
@@ -282,5 +289,15 @@ describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
 
     expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'drone', floor: '' }] })).statusCode).toBe(200);
     expect(await kinds(SAM)).toContain('drone');
+  });
+  it('keeps each value of a detail that holds several as its own fact', async () => {
+    const LEAD: Caller = { ...ADMIN, workspace: { ...ORG, role: 'lead' } };
+    const changes = [{ op: 'add-detail', type: 'person', detail: { key: 'languages', label: 'Languages', kind: 'text', identity: false, onEntity: false, many: true } }];
+    expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes })).statusCode).toBe(200);
+    const ana = (await call('POST', '/v1/entities', LEAD, { type: 'person', label: 'Ana Ruiz' })).json() as { id: string };
+    const say = (value: string) => call('POST', `/v1/entities/${ana.id}/observations`, LEAD, { property: 'languages', value, source: { kind: 'person' }, accept: true });
+    for (const v of ['Spanish', 'English', 'Spanish']) expect((await say(v)).statusCode).toBe(201);
+    const facts = (await call('GET', `/v1/entities/${ana.id}/knowledge`, LEAD)).json().facts.filter((f: { property: string }) => f.property === 'languages');
+    expect(facts.map((f: { value: string }) => f.value).sort()).toEqual(['English', 'Spanish']);
   });
 });
