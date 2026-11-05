@@ -3,7 +3,8 @@ import { MultiDirectedGraph } from 'graphology';
 import type Sigma from 'sigma';
 import type FA2Layout from 'graphology-layout-forceatlas2/worker';
 import { Button, Checkbox, CheckboxGroup, DateField, Heading, PageHead, Ref, Select, State, Toggle, cx, type SelectOption } from '@augur/app-kit';
-import { PAST_DAYS, floorWords, type AtlasApi, type Fold, type GraphNode, type Ontology, type Subgraph } from './api.js';
+import { isIntentCancelled } from '@augur/mfe-sdk';
+import { PAST_DAYS, floorWords, type AtlasApi, type IntentLens, type PickedIntent, type Fold, type GraphNode, type Ontology, type Subgraph } from './api.js';
 import { FOLD, HIDDEN, foldsOf, hiddenNear, hoverDrawer, linksOf, rings, syncGraph, widen, type Explored, type Look } from './graph.js';
 
 /** Links drawn from each entity before the rest fold into a count. */
@@ -48,6 +49,19 @@ export interface ExplorerProps {
   onOpenEntity: (id: string) => void;
   /** Makes another entity the centre. */
   onExplore: (id: string) => void;
+  /** Asks the person for an intent (Mandate's `aim.pick`), to explore within what it binds. */
+  pickIntent?: () => Promise<PickedIntent>;
+}
+
+/** Seeds one walk can start from (the service takes 50), the centre among them. */
+const SEEDS = 50;
+
+/** What the lens couldn't show: bound entities hidden from here, gone, or past the seeds one walk takes. */
+interface LensGaps {
+  hidden: number;
+  why?: string;
+  missing: number;
+  beyond: number;
 }
 
 /**
@@ -59,7 +73,7 @@ export interface ExplorerProps {
  * graph is always there as a list, for keyboards and screen readers, and for
  * browsers that can't draw it.
  */
-export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, onExplore }: ExplorerProps) {
+export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, onExplore, pickIntent }: ExplorerProps) {
   const drawable = useMemo(canDraw, []);
   const topKinds = useMemo<SelectOption[]>(() => (ontology?.types ?? []).filter((t) => !t.parent).map((t) => ({ value: t.key, label: t.plural })), [ontology]);
   const [open, setOpen] = useState<Explored>();
@@ -79,6 +93,16 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
   /** Why the centre can't be seen from here. */
   const [unseen, setUnseen] = useState('');
   const [view, setView] = useState<'graph' | 'list'>(drawable ? 'graph' : 'list');
+  /** The intent being explored within, and what it binds. */
+  const [lens, setLens] = useState<IntentLens>();
+  const [lensGaps, setLensGaps] = useState<LensGaps>();
+  const [lensBusy, setLensBusy] = useState(false);
+  const [lensError, setLensError] = useState('');
+  /** Why no intent can be picked here, once asking showed it. */
+  const [lensOff, setLensOff] = useState(pickIntent ? '' : 'Mandate isn’t available here, so there are no intents to explore within.');
+  const lensSet = useMemo(() => (lens ? new Set(lens.entities) : undefined), [lens]);
+  /** The lens's own seeds: what the intent binds, after the centre, as many as one walk takes. */
+  const lensSeeds = useMemo(() => (lens ? lens.entities.filter((id) => id !== centre).slice(0, SEEDS - 1) : []), [lens, centre]);
 
   const canvas = useRef<HTMLDivElement>(null);
   const graph = useRef(new MultiDirectedGraph());
@@ -120,9 +144,19 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     setError('');
     setUnseen('');
     try {
-      const sub = await api.subgraph({ seeds: [centre], depth, limitPerNode: PER_NODE, ...narrowing() });
+      const sub = await api.subgraph({ seeds: [centre, ...lensSeeds], depth, limitPerNode: PER_NODE, ...narrowing() });
       if (mine !== asked.current) return;
       if (sub.missing.includes(centre)) throw new Error('There’s no such entity. It may have been merged into another.');
+      if (lens) {
+        const inLens = new Set(lensSeeds);
+        const hidden = sub.unseen.filter((u) => inLens.has(u.id));
+        setLensGaps({
+          hidden: hidden.length,
+          why: hidden[0]?.message,
+          missing: sub.missing.filter((id) => inLens.has(id)).length,
+          beyond: Math.max(0, lens.entities.filter((id) => id !== centre).length - lensSeeds.length),
+        });
+      } else setLensGaps(undefined);
       const hidden = sub.unseen.find((u) => u.id === centre);
       if (hidden) {
         setUnseen(hidden.message);
@@ -139,7 +173,7 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     } finally {
       if (mine === asked.current) setLoading(false);
     }
-  }, [api, centre, depth, narrowing]);
+  }, [api, centre, depth, narrowing, lens, lensSeeds]);
   useEffect(() => {
     // Nothing to ask while every kind or link has been unticked: the group says so.
     if (ontology && (!kinds.length || !relations.length)) return;
@@ -182,7 +216,7 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     let live = true;
     void (async () => {
       const look = lookOf(container);
-      const added = syncGraph(graph.current, open, ontology, look, { hideDisputed });
+      const added = syncGraph(graph.current, open, ontology, look, { hideDisputed, lens: lensSet });
       if (!sigma.current) {
         const [{ default: SigmaDraw }, { default: Layout }, { default: forceAtlas2 }] = await Promise.all([
           import('sigma'),
@@ -226,7 +260,7 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     return () => {
       live = false;
     };
-  }, [view, drawable, open, ontology, hideDisputed]);
+  }, [view, drawable, open, ontology, hideDisputed, lensSet]);
   useEffect(() => void sigma.current?.refresh(), [selected]);
 
   /** A fold's links, read from its entity's side: "operates", "located at". */
@@ -310,19 +344,21 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
       <div className="atlas-rings">
         {rings(open).map(({ depth: d, nodes }) => (
           <section key={d}>
-            <h3 className="atlas-ring">{d === 0 ? 'Centre' : `Ring ${d}`}</h3>
+            <h3 className="atlas-ring">{d === 0 ? (lens ? 'Centre, and what the intent binds' : 'Centre') : `Ring ${d}`}</h3>
             <ul>
               {nodes.map((n) => {
                 const links = d === 0 ? [] : linksOf(open, ontology, n.ref.id).filter((l) => l.other.depth < d);
                 const folds = foldsOf(open, n.ref.id);
                 const hidden = hiddenNear(open, n.ref.id);
+                const outside = !!lensSet && n.ref.id !== centre && !lensSet.has(n.ref.id);
                 return (
-                  <li key={n.ref.id}>
+                  <li key={n.ref.id} className={cx(outside && 'atlas-outside')}>
                     <button type="button" className={cx('atlas-link', n.ref.id === selected && 'atlas-chosen')} onClick={() => setSelected(n.ref.id)}>
                       {n.ref.label}
                     </button>
                     <span className="atlas-note">
                       {typeLabel(n)} · {floorWords(n.floorName)}
+                      {lensSet?.has(n.ref.id) ? ' · in the intent' : ''}
                     </span>
                     {links.map((l) => (
                       <span key={l.edge.id} className="atlas-note">
@@ -350,9 +386,75 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     );
   };
 
+  /** Asks for an intent, then what it binds, and explores within it. */
+  const chooseIntent = async () => {
+    if (!pickIntent) return;
+    setLensError('');
+    let picked: PickedIntent;
+    try {
+      picked = await pickIntent();
+    } catch (err) {
+      if (isIntentCancelled(err)) return;
+      if ((err as Error).name === 'IntentError') setLensOff('Mandate isn’t open to you on this floor, so there are no intents to explore within. An admin can open it to you in Admin, Apps.');
+      else setLensError((err as Error).message);
+      return;
+    }
+    setLensBusy(true);
+    try {
+      setLens(await api.intentLens(picked.id).then((l) => ({ ...l, intent: { id: l.intent.id, title: l.intent.title || picked.title } })));
+    } catch (err) {
+      setLensError((err as Error).message);
+    } finally {
+      setLensBusy(false);
+    }
+  };
+
+  /** What the lens says about itself: how much of the intent shows, and why the rest doesn't. */
+  const lensWords = () => {
+    if (!lens) return null;
+    const shown = open ? lens.entities.filter((id) => open.nodes.has(id)).length : 0;
+    const lines: string[] = [];
+    if (!lens.entities.length) lines.push('Nothing in it is bound to an entity yet, so everything is dimmed.');
+    else lines.push(`${shown} of the ${lens.entities.length} entities it binds ${shown === 1 ? 'shows' : 'show'} here; the rest of the graph is dimmed.`);
+    if (lensGaps?.hidden) lines.push(`${lensGaps.hidden} can’t be seen from this floor: ${lensGaps.why ?? 'they’re kept on floors you aren’t on.'}`);
+    if (lensGaps?.missing) lines.push(`${lensGaps.missing} no longer ${lensGaps.missing === 1 ? 'exists' : 'exist'}: merged into another or deleted.`);
+    if (lensGaps?.beyond) lines.push(`${lensGaps.beyond} more aren’t drawn: one view starts from at most ${SEEDS - 1} of them.`);
+    return lines.map((l) => (
+      <p key={l} className="atlas-note">
+        {l}
+      </p>
+    ));
+  };
+
+  const lensControl = (
+    <div className="atlas-lens" aria-label="Within an intent">
+      {lens ? (
+        <>
+          <p className="atlas-lens-name">
+            Within <strong>{lens.intent.title || 'an intent'}</strong>
+          </p>
+          {lensWords()}
+          <Button kind="ghost" size="sm" onPress={() => setLens(undefined)}>
+            Show everything
+          </Button>
+        </>
+      ) : (
+        <Button size="sm" disabled={!!lensOff} reason={lensOff || undefined} busy={lensBusy} busyLabel="Reading the intent…" onPress={() => void chooseIntent()}>
+          Within an intent…
+        </Button>
+      )}
+      {lensError ? (
+        <p className="atlas-note atlas-refused" role="alert">
+          {lensError}
+        </p>
+      ) : null}
+    </div>
+  );
+
   const relationOptions = (ontology?.relations ?? []).map((r) => ({ value: r.key, label: r.label }));
   const filters = (
     <aside className="atlas-filters-pane" aria-label="What to show">
+      {lensControl}
       <Select label="Rings out" options={[1, 2, 3].map((d) => ({ value: String(d), label: RING_WORDS[d] }))} value={String(depth)} onChange={(v) => Number(v) !== depth && setDepth(Number(v))} />
       <CheckboxGroup label="Kinds" required value={kinds} hint="The centre always shows" onChange={setKinds} message={kinds.length ? undefined : 'Tick at least one kind to show.'}>
         {topKinds.map((o) => (
@@ -395,6 +497,12 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
         <span className="atlas-line" style={{ background: 'var(--warning)' }} />
         Disputed
       </li>
+      {lens ? (
+        <li>
+          <span className="atlas-dot" style={{ background: 'var(--ink-muted)' }} />
+          Dimmed: outside {lens.intent.title || 'the intent'}
+        </li>
+      ) : null}
     </ul>
   );
 

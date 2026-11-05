@@ -709,9 +709,14 @@ const fromDisputeRow = (r: DisputeRow): Dispute => ({
   ...(r.cleared_at ? { clearedAt: r.cleared_at.toISOString() } : {}),
 });
 
-/** The SQL that keeps facts true at `at` ($2) and recorded as of `known` ($3). */
-const FACT_IN_TIME = `(valid_from is null or valid_from <= $2) and (valid_to is null or valid_to > $2)
-  and recorded_at <= $3 and (superseded_at is null or superseded_at > $3)`;
+/**
+ * The SQL that keeps facts true at `at` ($2) and recorded as of `known` ($3).
+ * Either left null means now, by the database's clock: the one that stamps
+ * `recorded_at` and `superseded_at`. A now from this process could fall in the
+ * same millisecond as a withdrawal stamped in microseconds, and still see it.
+ */
+const FACT_IN_TIME = `(valid_from is null or valid_from <= coalesce($2::timestamptz, statement_timestamp())) and (valid_to is null or valid_to > coalesce($2::timestamptz, statement_timestamp()))
+  and recorded_at <= coalesce($3::timestamptz, statement_timestamp()) and (superseded_at is null or superseded_at > coalesce($3::timestamptz, statement_timestamp()))`;
 
 const fromRow = (r: EntityRow): Entity => ({
   id: r.id,
@@ -1321,12 +1326,11 @@ export class PgAtlasStore {
   /** Facts about these entities, or linking to them, as the query has them in time. */
   async facts(entities: readonly string[], { floors, at, known }: FactQuery): Promise<Fact[]> {
     if (!entities.length) return [];
-    const now = new Date().toISOString();
     const { rows } = await this.pool.query<FactRow>(
       `select ${FACT_COLUMNS} from atlas.facts
        where (entity = any($1) or target = any($1)) and floor = any($4) and ${FACT_IN_TIME}
        order by property, recorded_at desc`,
-      [entities, at ?? now, known ?? now, floors],
+      [entities, at ?? null, known ?? null, floors],
     );
     return rows.map(fromFactRow);
   }
@@ -1334,14 +1338,13 @@ export class PgAtlasStore {
   /** How many links each of these entities has, as the query has them in time: how strongly each is tied in. */
   async linkCounts(entities: readonly string[], { floors, at, known }: FactQuery): Promise<Map<string, number>> {
     if (!entities.length) return new Map();
-    const now = new Date().toISOString();
     const { rows } = await this.pool.query<{ id: string; n: string }>(
       `select id, count(*) as n from (
          select entity as id from atlas.facts where entity = any($1) and target is not null and floor = any($4) and ${FACT_IN_TIME}
          union all
          select target from atlas.facts where target = any($1) and floor = any($4) and ${FACT_IN_TIME}
        ) ends group by id`,
-      [entities, at ?? now, known ?? now, floors],
+      [entities, at ?? null, known ?? null, floors],
     );
     return new Map(rows.map((r) => [r.id, Number(r.n)]));
   }
