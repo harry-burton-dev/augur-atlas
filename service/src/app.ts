@@ -7,6 +7,7 @@ import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } 
 import { peopleFromEnv, type People } from './people.ts';
 import { knowledgeRoutes, subgraph, type Atlas } from './knowledge.ts';
 import { mergeRoutes } from './merges.ts';
+import { checkRoutes } from './shacl.ts';
 import { raiseRoutes } from './raises.ts';
 import { proposalRoutes } from './proposals.ts';
 import { resolver, type Embed } from './resolve.ts';
@@ -370,6 +371,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
       raiseRoutes(app, atlas);
       proposalRoutes(app, atlas);
       studioRoutes(app, atlas);
+      checkRoutes(app, atlas);
     },
     { prefix: `/${API_VERSION}` },
   );

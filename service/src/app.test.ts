@@ -226,6 +226,30 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
     );
   });
 
+  it('checks what it keeps against the ontology’s shapes, saying what doesn’t fit', async () => {
+    const made = await call('POST', '/v1/entities', on('sam', team('t-mar')), { type: 'vessel', label: 'Grey Heron', details: { imo: '9300001' } });
+    const heron = made.json();
+    const fine = await call('GET', `/v1/entities/${heron.id}/check`, on('sam', team('t-mar')));
+    expect(fine.statusCode).toBe(200);
+    expect(fine.json()).toMatchObject({ entity: heron.id, findings: [] });
+    // Kept before a rule existed, or some other way: written past the checks on writing.
+    const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    await db.query(`update atlas.entities set details = '{"imo": "93001"}' where id = $1`, [heron.id]);
+    await db.end();
+    const found = (await call('GET', `/v1/entities/${heron.id}/check`, on('sam', team('t-mar')))).json();
+    expect(found.findings).toEqual([expect.objectContaining({ entity: heron.id, label: 'Grey Heron', property: 'imo', message: expect.stringMatching(/^IMO number doesn’t look right/) })]);
+    const floor = (await call('GET', '/v1/checks?type=vehicle&limit=500', on('sam', team('t-mar')))).json();
+    expect(floor.findings.map((f: { entity: string }) => f.entity)).toContain(heron.id);
+    expect(floor.checked).toBe(floor.total);
+    // From where Lee stands it doesn't show, so neither does what's wrong with it.
+    expect((await call('GET', `/v1/entities/${heron.id}/check`, on('lee', team('t-fin')))).statusCode).toBe(403);
+    expect((await call('GET', '/v1/checks', on('lee', team('t-fin')))).json().findings.map((f: { entity: string }) => f.entity)).not.toContain(heron.id);
+    const shapes = await call('GET', '/v1/ontology/shacl', on('sam', ORG));
+    expect(shapes.headers['content-type']).toMatch(/text\/turtle/);
+    expect(shapes.body).toMatch(/sh:targetClass atlas:vessel/);
+    expect((await call('GET', '/v1/checks?type=nothing', on('sam', ORG))).statusCode).toBe(400);
+  });
+
   it('needs a floor to stand on', async () => {
     const res = await call('GET', '/v1/entities', person('sam'));
     expect(res.statusCode).toBe(400);

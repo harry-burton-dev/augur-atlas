@@ -5,6 +5,9 @@ import type {
   Adoption,
   Alike,
   AlikeList,
+  CheckFinding,
+  EntityCheck,
+  FloorCheck,
   CandidateDecision,
   Candidates,
   DetailDef,
@@ -50,7 +53,7 @@ import type {
 
 // The wire types are written once, in the service's api-types.ts, and shared with it. Where the service keeps a
 // record under the same name, the page's shape is a `...View` there; the pages know it by the shorter name here.
-export type { Alike, AlikeList, EntityRaises, RaiseList, RaiseView, Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
+export type { Alike, AlikeList, CheckFinding, EntityCheck, FloorCheck, EntityRaises, RaiseList, RaiseView, Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
 export type {
   Adoption,
   DetailDef,
@@ -279,6 +282,26 @@ export class AtlasApi {
     });
     if (!res.ok) throw await AppError.fromResponse(res, this.names);
     return res.text();
+  }
+
+  /** The ontology as SHACL shapes in Turtle, to save or check against elsewhere (ADR 0062). */
+  async shacl() {
+    const res = await this.ctx.fetch(`${this.names.base}/ontology/shacl`).catch((err: unknown) => {
+      throw AppError.from(err, this.names);
+    });
+    if (!res.ok) throw await AppError.fromResponse(res, this.names);
+    return res.text();
+  }
+
+  /** What about this entity doesn't fit the ontology's shapes, as it stands now. */
+  checkEntity(id: string) {
+    return this.call<EntityCheck>('GET', `/entities/${encodeURIComponent(id)}/check`);
+  }
+
+  /** A page of the entities in sight, checked against the ontology's shapes. */
+  checks(query: { type?: string; limit?: number; offset?: number } = {}) {
+    const q = new URLSearchParams(Object.entries(query).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]])));
+    return this.call<FloorCheck>('GET', `/checks${q.size ? `?${q}` : ''}`);
   }
 
   /** Where an entity may be raised to from here, and the requests made for it. */

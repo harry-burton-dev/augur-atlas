@@ -18,6 +18,7 @@
     "fastify": "^5.6.0",
     "n3": "^2.13.12",
     "pg": "^8.23.1",
+    "rdf-validate-shacl": "^0.6.5",
     "ulid": "^3.0.2"
   },
   "devDependencies": {
