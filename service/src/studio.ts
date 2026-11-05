@@ -1,6 +1,6 @@
 import { callerFromHeaders, type Caller } from '@augur/service-kit';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { CHOICE_VALUES, DETAIL_KINDS, type Adoption, type CandidateDecision, type Candidates, type OntologyChanged, type Packs, type PackUpload, type PackView } from './api-types.ts';
+import { CHOICE_VALUES, DETAIL_KINDS, SYMBOL_CODE, type Adoption, type CandidateDecision, type Candidates, type OntologyChanged, type Packs, type PackUpload, type PackView } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Atlas } from './knowledge.ts';
 import { isA, type DetailDef, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
@@ -17,6 +17,8 @@ import type { ProposedTerm } from './store.ts';
 
 const KEY = /^[a-z][a-z0-9-]{0,47}$/;
 const ICON = /^[a-z][a-z-]{0,31}$/;
+const SYMBOL = new RegExp(SYMBOL_CODE);
+const SYMBOL_WRONG = 'A symbol code is an APP-6 or MIL-STD-2525 code: 10 to 30 letters, digits, dashes or asterisks.';
 const NOT_ADMIN = 'Only admins change the ontology for now. You can read it, its packs and its history.';
 
 /** Whether the caller may change the ontology, and why not. */
@@ -72,7 +74,7 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
         if (!KEY.test(t.key)) return `“${t.key}” won’t do as a key: lower-case letters, digits and dashes, starting with a letter.`;
         if (type(t.key)) return `There’s already a kind called “${t.key}” (${named(t.key)}).`;
         if (t.parent && !type(t.parent)) return `There’s no kind “${t.parent}” for ${t.label} to go under.`;
-        const bad = words(t.label, 'The name') ?? words(t.plural, 'The plural') ?? (ICON.test(t.icon) ? undefined : 'Pick an icon from the list.');
+        const bad = words(t.label, 'The name') ?? words(t.plural, 'The plural') ?? (ICON.test(t.icon) ? undefined : 'Pick an icon from the list.') ?? (t.symbol && !SYMBOL.test(t.symbol) ? SYMBOL_WRONG : undefined);
         if (bad) return bad;
         if (o.types.some((x) => x.label.toLowerCase() === t.label.toLowerCase())) return `There’s already a kind named ${t.label}.`;
         o.types.push({ ...t, details: [] });
@@ -81,10 +83,14 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
       case 'edit-type': {
         const t = type(c.key);
         if (!t) return `There’s no kind “${c.key}”.`;
-        const bad = (c.label !== undefined && words(c.label, 'The name')) || (c.plural !== undefined && words(c.plural, 'The plural')) || (c.icon !== undefined && !ICON.test(c.icon) && 'Pick an icon from the list.');
+        const bad = (c.label !== undefined && words(c.label, 'The name')) || (c.plural !== undefined && words(c.plural, 'The plural')) || (c.icon !== undefined && !ICON.test(c.icon) && 'Pick an icon from the list.') || (c.symbol && !SYMBOL.test(c.symbol) && SYMBOL_WRONG);
         if (bad) return bad;
         if (c.label && o.types.some((x) => x !== t && x.label.toLowerCase() === c.label!.toLowerCase())) return `There’s already a kind named ${c.label}.`;
         Object.assign(t, { ...(c.label ? { label: c.label } : {}), ...(c.plural ? { plural: c.plural } : {}), ...(c.icon ? { icon: c.icon } : {}) });
+        if (c.symbol !== undefined) {
+          if (c.symbol) t.symbol = c.symbol;
+          else delete t.symbol;
+        }
         break;
       }
       case 'add-detail': {
@@ -105,7 +111,10 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
             return 'The pattern isn’t a regular expression that can be read.';
           }
         }
-        if (d.identity && d.onEntity === false) return 'An identity key is typed on the entity itself, so it can’t be known only through facts.';
+        if (d.changes && !d.identity) return 'Only an identity key can pass from one thing to another.';
+        if (d.changes && d.onEntity !== false) return 'A key that passes from one thing to another is known through facts, each with its dates, not typed on the entity.';
+        if (d.identity && d.onEntity === false && !d.changes) return 'An identity key is typed on the entity itself, so it can’t be known only through facts, unless it passes from one thing to another over time.';
+        if (d.changes && d.kind !== 'text' && d.kind !== 'number') return 'A key that passes from one thing to another holds text or a number.';
         const holds = holdsProblem(d);
         if (holds) return holds;
         t.details.push(d);
@@ -222,6 +231,7 @@ const DETAIL_DEF = {
     hint: { type: 'string', maxLength: 200 },
     onEntity: { type: 'boolean' },
     packIri: { type: 'string', maxLength: 500 },
+    changes: { type: 'boolean' },
   },
   required: ['key', 'label', 'kind', 'identity'],
   additionalProperties: false,
@@ -235,6 +245,7 @@ const CHANGE = {
     label: { type: 'string', maxLength: 80 },
     plural: { type: 'string', maxLength: 80 },
     icon: { type: 'string', maxLength: 32 },
+    symbol: { type: 'string', maxLength: 30 },
     hint: { type: 'string', maxLength: 200 },
     inverse: { type: 'string', maxLength: 80 },
     from: KINDS,
@@ -251,6 +262,7 @@ const CHANGE = {
             parent: { type: 'string', maxLength: 48 },
             abstract: { type: 'boolean' },
             icon: { type: 'string', maxLength: 32 },
+            symbol: { type: 'string', maxLength: 30 },
             pack: { type: 'string', maxLength: 48 },
             packTerm: { type: 'string', maxLength: 200 },
             packIri: { type: 'string', maxLength: 500 },

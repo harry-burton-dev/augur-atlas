@@ -132,6 +132,15 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
     const { principals, floors } = await sight(caller);
     const holder = err.holder;
     const what = `${err.detail.label} ${err.value}`;
+    if (err.during) {
+      // A key that changes hands: another entity holds it over some of the same time, which isn't the same thing.
+      const span = [err.during.from ? `from ${err.during.from.slice(0, 10)}` : '', err.during.to ? `until ${err.during.to.slice(0, 10)}` : 'with no end yet'].filter(Boolean).join(' ');
+      const fix = 'Only one thing holds it at a time: end that record first, or give this one dates that don’t overlap.';
+      if (floors.includes(holder.floor)) return { error: 'key-held', message: `${what} is ${holder.label}’s ${span}. ${fix}`, holder: { id: holder.id, label: holder.label, type: holder.type } };
+      const named = await nameFloors(caller, [holder.floor]);
+      const why = unseen(holder.floor, principals, caller.id, knownName(named(holder.floor)));
+      return { error: 'key-held', message: `${what} is another entity’s ${span}. ${fix} ${why.message}`, holder: { id: holder.id, hidden: true, reason: why.reason } };
+    }
     if (floors.includes(holder.floor)) {
       return { error: 'key-taken', message: `${what} is already ${holder.label}. It’s the same real thing: open it instead of adding another.`, holder: { id: holder.id, label: holder.label, type: holder.type } };
     }

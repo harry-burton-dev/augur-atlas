@@ -19,6 +19,9 @@
  */
 export type DetailKind = 'text' | 'number' | 'date' | 'quantity' | 'choice' | 'place';
 
+/** What a military symbol code may look like: its form only. Whether it can be drawn is milsymbol's to say (ADR 0070). */
+export const SYMBOL_CODE = '^[A-Za-z0-9*-]{10,30}$';
+
 /** Every kind of detail, in the order the studio offers them. */
 export const DETAIL_KINDS: readonly DetailKind[] = ['text', 'number', 'date', 'quantity', 'choice', 'place'];
 
@@ -46,6 +49,12 @@ export interface DetailDef {
   unit?: string;
   /** A choice's values, in the order they're offered. */
   values?: string[];
+  /**
+   * An identity key that may pass from one thing to another over time, as a
+   * vessel's MMSI does. It's known through facts (`onEntity` false), and only
+   * one entity holds a value at any time. Set when the detail is added.
+   */
+  changes?: boolean;
 }
 
 /**
@@ -75,6 +84,11 @@ export interface TypeDef {
   abstract: boolean;
   /** A ui-kit icon name. */
   icon: string;
+  /**
+   * A military symbol code (an APP-6 or MIL-STD-2525 SIDC), drawn in place of
+   * the icon where it can be (ADR 0070). Absent for most kinds.
+   */
+  symbol?: string;
   /** The ontology pack it comes from, and the pack's own name for it. */
   pack: string;
   packTerm: string;
@@ -89,7 +103,7 @@ export interface TypeDef {
  */
 export type OntologyChange =
   | { op: 'add-type'; type: Omit<TypeDef, 'details'> }
-  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string }
+  | { op: 'edit-type'; key: string; label?: string; plural?: string; icon?: string; /** An empty string takes the symbol away. */ symbol?: string }
   | { op: 'add-detail'; type: string; detail: DetailDef }
   | { op: 'edit-detail'; type: string; key: string; label?: string; hint?: string }
   | { op: 'add-relation'; relation: RelationDef }
@@ -614,6 +628,8 @@ export interface EntityUses {
   intents: { app: string; id: string; role: string; since: string; floorName?: string }[];
   /** Records in another app linked to it: a library, folder or document, by its level of the shape (a file is a document). */
   records: { app: string; id: string; level: string; role: string; since: string; floorName?: string }[];
+  /** Things any other app binds to it (ADR 0066), by the kind its events name. Optional: an older Data Atlas leaves it out. */
+  others?: { app: string; id: string; kind: string; role: string; since: string; floorName?: string }[];
   documents: MentionedIn[];
 }
 

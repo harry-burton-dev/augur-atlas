@@ -12,10 +12,11 @@
   },
   "dependencies": {
     "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.8.0",
-    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^2.0.0",
+    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^2.1.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "maplibre-gl": "^5.6.0",
+    "milsymbol": "^3.0.4",
     "pmtiles": "^4.3.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

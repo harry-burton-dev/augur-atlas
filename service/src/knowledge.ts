@@ -5,7 +5,7 @@ import type { OnFloor } from './app.ts';
 import type { Audit } from './audit.ts';
 import { floorKindOf, floorPrincipal, type Unseen } from './floors.ts';
 import { checkDetail, detailsOf, isA, normaliseDetail, relationsFrom, withSubtypes, type DetailDef, type Ontology, type RelationDef } from './ontology.ts';
-import { refOf, type Entity, type Fact, type KeyTakenError, type Observation, type PgAtlasStore, type Source } from './store.ts';
+import { KeyTakenError, refOf, type Entity, type Fact, type Observation, type PgAtlasStore, type Source } from './store.ts';
 import type { Resolver } from './resolve.ts';
 
 /**
@@ -115,8 +115,8 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
 
   /**
    * What uses an entity, from here (spec, "used by"): intents bound to it, from
-   * Mandate's events, records linked to it, from Artifacts' events, and
-   * documents what's known of it came from. Intents are
+   * Mandate's events, records linked to it, from Artifacts' events, things
+   * any other app binds to it, and documents what's known of it came from. Intents are
    * ids and roles: the page asks Mandate to name them as the viewer, so one the
    * viewer can't open still shows, saying where it's kept.
    */
@@ -131,6 +131,8 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
     return {
       intents: uses.filter((u) => u.app === 'mandate').map((u) => ({ app: u.app, id: u.id, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
       records: uses.filter((u) => u.app === 'folio').map((u) => ({ app: u.app, id: u.id, level: u.kind, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
+      // Any other app that binds its things to entities (ADR 0066): shown by its kind, so nothing that uses it is hidden.
+      others: uses.filter((u) => u.app !== 'mandate' && u.app !== 'folio').map((u) => ({ app: u.app, id: u.id, kind: u.kind, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
       documents,
     } satisfies EntityUses;
   });
@@ -263,8 +265,15 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       });
       void recorded({ actor: caller.id, action: 'observation.recorded', target: entity.id, workspace: caller.workspace.id, detail: { observation: observation.id, property: observation.property } });
       if (!req.body.accept) return reply.code(201).send({ observation } satisfies Observed);
-      const fact = await accept(atlas, caller, entity, [observation], {});
-      return reply.code(201).send({ observation, fact } satisfies Observed);
+      try {
+        const fact = await accept(atlas, caller, entity, [observation], {});
+        return reply.code(201).send({ observation, fact } satisfies Observed);
+      } catch (err) {
+        if (!(err instanceof KeyTakenError)) throw err;
+        // What was seen is kept; it just can't be so here while another entity holds the key.
+        const held = (await atlas.keyTaken(caller, err)) as { message: string };
+        return reply.code(409).send({ ...held, message: `${held.message} What was seen is kept as an observation.`, observation });
+      }
     },
   );
 
@@ -303,7 +312,13 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       const validTo = when(req.body.validTo);
       if (validFrom === false || validTo === false) return reply.code(400).send({ error: 'bad-time', message: 'From and until must be dates, or dates and times.' });
       if (validFrom && validTo && validTo <= validFrom) return reply.code(400).send({ error: 'bad-time', message: 'Until must come after from.' });
-      const fact = await accept(atlas, caller, entity, usable, { validFrom, validTo, note: req.body.note });
+      let fact: Fact | undefined;
+      try {
+        fact = await accept(atlas, caller, entity, usable, { validFrom, validTo, note: req.body.note });
+      } catch (err) {
+        if (err instanceof KeyTakenError) return reply.code(409).send(await atlas.keyTaken(caller, err));
+        throw err;
+      }
       if (!fact) return reply.code(409).send({ error: 'changed', message: 'This floor’s record of it changed while you were accepting it. Look again.' });
       return reply.code(201).send(fact);
     },
@@ -458,7 +473,13 @@ export const accept = async (
   const floor = floorPrincipal(caller.id, caller.workspace);
   const ontology = await atlas.store.ontology();
   // A detail has one value at a time on a floor; links may be many.
-  const replaces = propertyOf(ontology, entity.type, first.property)?.kind === 'detail' ? (await atlas.store.currentFacts(entity.id, first.property, floor)).map((f) => f.id) : [];
+  const property = propertyOf(ontology, entity.type, first.property);
+  const replaces = property?.kind === 'detail' ? (await atlas.store.currentFacts(entity.id, first.property, floor)).map((f) => f.id) : [];
+  // A key that changes hands (an MMSI): no other entity of a kind that has it may hold the value over the same time.
+  const held =
+    property?.kind === 'detail' && property.def.changes
+      ? { detail: property.def, types: ontology.types.filter((t) => detailsOf(ontology, t.key).some((d) => d.key === property.def.key && d.changes)).map((t) => t.key) }
+      : undefined;
   const fact = await atlas.store.addFact(
     {
       entity: entity.id,
@@ -473,6 +494,7 @@ export const accept = async (
       createdBy: caller.id,
     },
     replaces,
+    held,
   );
   if (fact) void atlas.recorded({ actor: caller.id, action: 'fact.recorded', target: entity.id, workspace: caller.workspace.id, detail: { fact: fact.id, property: fact.property, replaces } });
   return fact;

@@ -2,7 +2,7 @@ import { callerHeaders, type Caller, type CallerWorkspace } from '@augur/service
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
-import { follower } from './follow.ts';
+import { bindingStreams, followBindings, follower } from './follow.ts';
 import type { People } from './people.ts';
 import { PgAtlasStore } from './store.ts';
 
@@ -57,6 +57,16 @@ describe.runIf(process.env.DATABASE_URL)('Following other apps', () => {
     expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().records).toEqual([]);
   });
 
+  it('lists what any other app binds to it, by the kind its events name', async () => {
+    const bound = { topic: 'claims.claim.entity-bound', workspace: { id: 't-ops', path: [] }, payload: { claim: 'clm_1', entity: tern.id } };
+    await handle(bound);
+    expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().others).toEqual([expect.objectContaining({ app: 'claims', id: 'clm_1', kind: 'claim', role: 'related', floorName: 'Ops planning' })]);
+    await handle({ ...bound, topic: 'claims.claim.entity-unbound' });
+    // Not a binding: ignored.
+    await handle({ topic: 'claims.claim.entity-bound', payload: { entity: tern.id } });
+    expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().others).toEqual([]);
+  });
+
   it('retracts what was read from a withdrawn document, keeping it and saying so, and nothing new rests on it', async () => {
     const said = (await call('POST', `/v1/entities/${tern.id}/observations`, SAM_LEAD, { property: 'flag', value: 'Liberia', source: report('d-1'), accept: true })).json();
     expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().documents).toEqual([expect.objectContaining({ app: 'folio', id: 'd-1', title: 'Report d-1', observations: 1, withdrawn: false })]);
@@ -94,5 +104,51 @@ describe.runIf(process.env.DATABASE_URL)('Following other apps', () => {
     await store.saveEventCursor('41');
     await store.saveEventCursor('42');
     expect(await store.eventCursor()).toBe('42');
+    expect(await store.bindingCursor('mandate.intent')).toBeUndefined();
+    await store.saveBindingCursor('mandate.intent', '7');
+    await store.saveBindingCursor('mandate.intent', '9');
+    await store.saveBindingCursor('folio.record', '3');
+    expect([await store.bindingCursor('mandate.intent'), await store.bindingCursor('folio.record')]).toEqual(['9', '3']);
+  });
+});
+
+describe('Following the apps the registry lists', () => {
+  it('reads one stream per app and type, and all of an app that names none', () => {
+    expect(bindingStreams([{ app: 'mandate', types: ['intent'] }, { app: 'claims', types: [] }])).toEqual([
+      { key: 'mandate.intent', topics: ['mandate.intent.entity-bound', 'mandate.intent.entity-unbound'] },
+      { key: 'claims.*', topics: ['claims.*'] },
+    ]);
+  });
+
+  it('starts a stream for each new app or type, stops those no longer listed, and keeps going while the registry is away', async () => {
+    let listed: { app: string; types: string[] }[] | Error = [{ app: 'mandate', types: ['intent'] }];
+    const started: string[] = [];
+    const stopped: string[] = [];
+    const f = followBindings({
+      apps: async () => {
+        if (listed instanceof Error) throw listed;
+        return listed;
+      },
+      follow: ({ key }) => {
+        started.push(key);
+        return { stop: () => stopped.push(key) };
+      },
+    });
+    expect(await f.refresh()).toEqual(['mandate.intent']);
+    expect(await f.refresh()).toEqual(['mandate.intent']);
+    expect(started).toEqual(['mandate.intent']);
+
+    listed = [{ app: 'folio', types: ['record'] }, { app: 'mandate', types: ['intent', 'plan'] }];
+    expect((await f.refresh()).sort()).toEqual(['folio.record', 'mandate.intent', 'mandate.plan']);
+    listed = [{ app: 'folio', types: ['record'] }];
+    await f.refresh();
+    expect(stopped.sort()).toEqual(['mandate.intent', 'mandate.plan']);
+
+    listed = new Error('registry down');
+    await expect(f.refresh()).rejects.toThrow('registry down');
+    expect(f.following()).toEqual(['folio.record']);
+    f.stop();
+    expect(f.following()).toEqual([]);
+    expect(stopped).toContain('folio.record');
   });
 });

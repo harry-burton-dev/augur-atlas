@@ -14,7 +14,7 @@ The things the organisation keeps track of (ships, ports, organisations, people,
 
 ## What it keeps
 
-- **Entities**, each with an `ent_` + ULID id for life, a kind from the ontology, a name, other names, a description and details. Details marked as identity keys (an IMO number, a UN/LOCODE) belong to one entity only, whatever its floor.
+- **Entities**, each with an `ent_` + ULID id for life, a kind from the ontology, a name, other names, a description and details. Details marked as identity keys (an IMO number, a UN/LOCODE) belong to one entity only, whatever its floor. An identity key that **changes hands** over time (an MMSI, which passes to another vessel when one is scrapped) is known through facts with dates instead: only one entity holds a value at any time, and a fact that would overlap another entity's is refused, naming who holds it and when. Searching by it finds whoever holds it now.
 - **The ontology**: a starter profile of the [Common Core Ontologies](https://github.com/CommonCoreOntology/CommonCoreOntologies) (BSD-3). Each kind names the pack term it stands for, by IRI, so it exports as that. Admins change the ontology, for now, in the studio (see [The ontology](#the-ontology)).
 
 ## Fenced by floor
@@ -34,7 +34,7 @@ Under `/api/atlas/v1`, on the floor in `X-Workspace-Id`:
 | Route | |
 | --- | --- |
 | `GET /ontology` | The kinds of thing, their details and the ontology's version |
-| `GET /entities/:id/used-by` | What uses an entity from here: intents bound to it (from Mandate's events, ids and roles, named by Mandate as the viewer) and the documents what's known of it came from |
+| `GET /entities/:id/used-by` | What uses an entity from here: intents bound to it (from Mandate's events, ids and roles, named by Mandate as the viewer), records Artifacts links to it, things any other app binds to it (`others`), and the documents what's known of it came from |
 | `GET /ontology/versions` | Every version: who made it, why, and the changes in it |
 | `GET /ontology/owl` | The ontology as OWL in Turtle, each kind and link saying which pack term it is (`skos:exactMatch`) |
 | `GET /ontology/shacl` | The ontology as SHACL shapes in Turtle (ADR 0062): a node shape for each kind, a property shape for each detail (its datatype, pattern, values) and kind of link (the kinds it may reach) |
@@ -43,7 +43,7 @@ Under `/api/atlas/v1`, on the floor in `X-Workspace-Id`:
 | `GET /ontology/packs`, `GET /ontology/packs/:id` | The packs to adopt from, and a pack's terms, each saying where it's kept here once adopted. Both say whether the caller may change the ontology, and why not |
 | `POST /ontology/packs` | An admin loads a pack from OWL in Turtle (`turtle`, with `id`, `name`, `version`, `licence`); loading again under the same id replaces it |
 | `POST /ontology/adopt` | An admin adopts a pack term (`pack`, `iri`) as a kind, detail or kind of link, saying what the pack doesn't (its parent, how a link reads backwards) |
-| `POST /ontology/changes` | An admin adds or renames kinds, details and kinds of link: one new version |
+| `POST /ontology/changes` | An admin adds or renames kinds, details and kinds of link: one new version. `edit-type` also sets a kind's military symbol code (`symbol`, an APP-6 or MIL-STD-2525 code, ADR 0070), or takes it away with an empty one |
 | `GET /ontology/candidates` | Words sources asked for that the ontology hasn't got, most asked first; admins see them, everyone else how many wait |
 | `POST /ontology/candidates/decide` | An admin adopts a candidate (as the change given) or dismisses it, for every proposal that asked |
 | `GET /entities?q=&type=&limit=&offset=` | What shows from this floor, by name, other name or identity key; `type` takes its subtypes too. `seeing` names the floors it comes from |
@@ -84,7 +84,9 @@ Nothing becomes knowledge without a lead deciding (Harry, 27 October 2026; auto-
 
 ## Used by, and retraction
 
-Data Atlas follows other apps' events (`events:subscribe`) and keeps its place in them. Mandate's `mandate.intent.entity-bound` and `-unbound` keep a **used by** index: Mandate's bindings stay the truth, and a binding never becomes a fact. The entity page asks Mandate to name those intents as the person (`POST /api/mandate/v1/refs/resolve`), so an intent they can't open still shows, saying which floor keeps it; when Mandate can't be asked, it says how many intents use the entity and why they can't be named. Artifacts' `folio.record.entity-bound` and `-unbound` do the same for a library, folder or document linked to an entity (ADR 0025): they come as ids and a level, never titles, so the page lists them by what they are and opening one asks Artifacts (`unit.open`), which shows it or says it isn't shared.
+Data Atlas follows other apps' events (`events:subscribe`) and keeps its place in them. It follows the entity bindings of every app the registry lists as binding its things to entities (manifest `links.entities` and `bindings`, SDK 2.1, ADR 0066; `GET /v1/entity-links`), asking again every five minutes, so an app installed later is followed without a change here. Each app and type is read with its own cursor (`atlas.binding_cursors`), from its start, and doing an event twice does no harm. A binding from an app other than Mandate or Artifacts is listed under **Linked from** by the kind its events name, saying it opens from its own app. Without `REGISTRY_URL` it follows no bindings and says so in its log.
+
+Mandate's `mandate.intent.entity-bound` and `-unbound` keep a **used by** index: Mandate's bindings stay the truth, and a binding never becomes a fact. The entity page asks Mandate to name those intents as the person (`POST /api/mandate/v1/refs/resolve`), so an intent they can't open still shows, saying which floor keeps it; when Mandate can't be asked, it says how many intents use the entity and why they can't be named. Artifacts' `folio.record.entity-bound` and `-unbound` do the same for a library, folder or document linked to an entity (ADR 0025): they come as ids and a level, never titles, so the page lists them by what they are and opening one asks Artifacts (`unit.open`), which shows it or says it isn't shared.
 
 When Artifacts withdraws or deletes a document (`folio.document.withdrawn`, `folio.document.deleted`), what was read from it is **retracted**: each observation stays as it was said, marked with why, and stops counting as evidence. It can't back a new fact; a fact resting only on retracted observations stays, saying so, until its floor's leads end or withdraw it; an entity whose only evidence was retracted is marked as having no current source and is never deleted. A proposal still waiting on that document says its source is gone, and what it says can only be dropped.
 

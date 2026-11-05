@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Dialog, DropZone, Icon, PageHead, Select, State, Tag, TextField, relativeTime, type DialogSubmit, type IconName, type SelectOption } from '@augur/app-kit';
+import { Button, Dialog, DropZone, Icon, PageHead, Select, State, Tag, TextField, relativeTime, type DialogSubmit, type SelectOption } from '@augur/app-kit';
 import {
   keyFrom,
   pluralOf,
@@ -16,6 +16,7 @@ import {
   type TermCandidate,
 } from './api.js';
 import { KeptChecks } from './checks.js';
+import { KindMark, symbolProblem } from './symbol.js';
 
 type Tab = 'kinds' | 'links' | 'asked' | 'packs' | 'checks' | 'history';
 
@@ -38,6 +39,16 @@ const holdsExtra = (holds: DetailDef['kind'], values: Record<string, string>): P
       ? { values: [...new Set((values.values ?? '').split(',').map((v) => v.trim()).filter(Boolean))] }
       : {};
 
+type Says = 'no' | 'fixed' | 'changes';
+const SAYS: SelectOption[] = [
+  { value: 'no', label: 'No' },
+  { value: 'fixed', label: 'Yes, always the same thing' },
+  { value: 'changes', label: 'Yes, but it can pass to another thing over time' },
+];
+/** What "Says which one" makes of a detail: an identity key typed on the entity, or one known through facts that changes hands. */
+const saysExtra = (says: Says, holds: DetailDef['kind']): Pick<DetailDef, 'identity' | 'onEntity' | 'changes'> =>
+  holds !== 'text' && holds !== 'number' ? { identity: false } : says === 'fixed' ? { identity: true } : says === 'changes' ? { identity: true, onEntity: false, changes: true } : { identity: false };
+
 /** What a term or change is, in a word. */
 const whatWord = (kind: 'class' | 'type' | 'detail' | 'relation') => (kind === 'relation' ? 'a kind of link' : kind === 'detail' ? 'a detail' : 'a kind of thing');
 const capital = (words: string) => words.replace(/^\w/, (x) => x.toUpperCase());
@@ -55,6 +66,8 @@ interface TermForm {
   icon: string;
   type: string;
   holds: DetailDef['kind'];
+  /** Whether the detail says which thing it is: not at all, always the same thing, or whoever holds it at the time. */
+  says: Says;
   from: string;
   to: string;
 }
@@ -147,6 +160,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: o?.types.find((t) => t.key === parent)?.icon ?? 'tag',
       type: (term.domain ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
       holds: 'text',
+      says: 'no',
       from: (term.domain ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
       to: (term.range ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
     });
@@ -168,6 +182,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: s.op === 'add-type' ? s.type.icon : 'tag',
       type: s.op === 'add-detail' ? s.type : '',
       holds: 'text',
+      says: 'no',
       from: s.op === 'add-relation' ? (s.relation.from[0] ?? '') : '',
       to: '',
     });
@@ -187,6 +202,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: 'tag',
       type: on,
       holds: 'text',
+      says: 'no',
       from: '',
       to: '',
     });
@@ -197,7 +213,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
     const key = keyFrom(name);
     const packed = 'candidate' in f.via ? { pack: 'augur', packTerm: f.via.candidate.name } : { pack: 'augur', packTerm: name };
     if (f.what === 'type') return { op: 'add-type', type: { key, label: name, plural: values.plural?.trim() || pluralOf(name), abstract: false, icon: f.icon, ...packed, ...(f.parent ? { parent: f.parent } : {}) } };
-    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, identity: false, ...holdsExtra(f.holds, values) } };
+    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, ...saysExtra(f.says, f.holds), ...holdsExtra(f.holds, values) } };
     return { op: 'add-relation', relation: { key, label: name, inverse: values.inverse.trim(), from: f.from ? [f.from] : [], to: f.to ? [f.to] : [], ...packed } };
   };
 
@@ -231,11 +247,16 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
   const submitRename: DialogSubmit = async (values) => {
     const e = editing;
     if (!e) return false as const;
+    const symbol = e.what === 'type' ? (values.symbol ?? '').trim() : '';
+    if (symbol) {
+      const problem = await symbolProblem(symbol);
+      if (problem) throw new Error(problem);
+    }
     const change: OntologyChange =
-      e.what === 'type' ? { op: 'edit-type', key: e.key, label: values.label.trim(), plural: values.plural.trim() } : { op: 'edit-relation', key: e.key, label: values.label.trim(), inverse: values.inverse.trim() };
+      e.what === 'type' ? { op: 'edit-type', key: e.key, label: values.label.trim(), plural: values.plural.trim(), symbol } : { op: 'edit-relation', key: e.key, label: values.label.trim(), inverse: values.inverse.trim() };
     const done = await api.changeOntology([change]);
     setEditing(undefined);
-    await changed(done.ontology, 'Renamed. What’s kept under it is the same.');
+    await changed(done.ontology, e.what === 'type' ? 'Changed. What’s kept under it is the same.' : 'Renamed. What’s kept under it is the same.');
   };
 
   const submitPack: DialogSubmit = async (values) => {
@@ -278,14 +299,14 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       <ul className="atlas-rows">
         {typeTree(o).map(({ type: t, depth }) => (
           <li key={t.key} className="atlas-row" style={{ paddingInlineStart: `calc(${depth} * var(--space-5))` }}>
-            <Icon name={t.icon as IconName} size={16} />
+            <KindMark kind={t} size={16} />
             <div className="atlas-what">
               <span className="atlas-name">
                 {t.label}
                 {t.abstract ? <span className="atlas-note"> a heading only</span> : null}
               </span>
-              <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`].join(' · ')}</span>
-              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
+              <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`, ...(t.symbol ? [`Symbol ${t.symbol}`] : [])].join(' · ')}</span>
+              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.changes ? ' (says which one, changes hands)' : d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
             </div>
             {govern ? (
               <div className="atlas-actions">
@@ -293,7 +314,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
                   Add a detail
                 </Button>
                 <Button kind="ghost" size="sm" onPress={() => setEditing({ what: 'type', key: t.key })}>
-                  Rename
+                  Change…
                 </Button>
               </div>
             ) : null}
@@ -487,6 +508,15 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
                   <Select label="Holds" options={HOLDS} value={f.holds} onChange={(v) => setForm({ ...f, holds: v as DetailDef['kind'] })} />
                   {f.holds === 'quantity' ? <TextField key="unit" name="unit" label="Measured in" required maxLength={24} hint="The unit, as people write it: t, m, knots" /> : null}
                   {f.holds === 'choice' ? <TextField key="values" name="values" label="Values to choose from" required maxLength={2000} hint="At least two, separated by commas" /> : null}
+                  {!('pack' in f.via) && (f.holds === 'text' || f.holds === 'number') ? (
+                    <Select
+                      label="Says which one"
+                      options={SAYS}
+                      value={f.says}
+                      onChange={(v) => setForm({ ...f, says: v as Says })}
+                      hint={f.says === 'changes' ? 'Like an MMSI: known through facts with dates, and only one thing holds it at a time.' : f.says === 'fixed' ? 'Like an IMO number: no two things may share it.' : undefined}
+                    />
+                  ) : null}
                 </>
               ) : null}
               {f.what === 'relation' ? (
@@ -509,15 +539,25 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
           open
           onClose={() => setEditing(undefined)}
           eyebrow="Ontology"
-          heading={`Rename ${t?.label ?? r?.label ?? e.key}`}
-          summary="Only the words change: its key, and everything kept under it, stay as they are."
-          actionLabel="Rename"
-          busyLabel="Renaming…"
+          heading={t ? `Change ${t.label}` : `Rename ${r?.label ?? e.key}`}
+          summary={t ? 'Only its words and how it’s drawn change: its key, and everything kept under it, stay as they are.' : 'Only the words change: its key, and everything kept under it, stay as they are.'}
+          actionLabel={t ? 'Save' : 'Rename'}
+          busyLabel={t ? 'Saving…' : 'Renaming…'}
           onSubmit={submitRename}
           fields={
             <>
               <TextField name="label" label="Name" required maxLength={80} defaultValue={t?.label ?? r?.label ?? ''} />
               {t ? <TextField name="plural" label="Plural" required maxLength={80} defaultValue={t.plural} /> : null}
+              {t ? (
+                <TextField
+                  name="symbol"
+                  label="Military symbol"
+                  optional
+                  maxLength={30}
+                  defaultValue={t.symbol ?? ''}
+                  hint="An APP-6 or MIL-STD-2525 symbol code, drawn in place of its icon. Leave it empty to keep the icon."
+                />
+              ) : null}
               {r ? <TextField name="inverse" label="Read backwards" required maxLength={80} defaultValue={r.inverse} /> : null}
             </>
           }

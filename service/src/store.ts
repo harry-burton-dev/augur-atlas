@@ -33,16 +33,25 @@ export interface EntityQuery {
   offset?: number;
 }
 
+/** A key that changes hands (DetailDef.changes) to check a new fact against, and the kinds that share it. */
+export interface HeldKey {
+  detail: DetailDef;
+  types: readonly string[];
+}
+
 /** Another entity already has that identity key: it's the same real thing, or the value is wrong. */
 export class KeyTakenError extends Error {
   readonly detail: DetailDef;
   readonly value: string;
   readonly holder: Pick<Entity, 'id' | 'type' | 'label' | 'floor'>;
-  constructor(detail: DetailDef, value: string, holder: Pick<Entity, 'id' | 'type' | 'label' | 'floor'>) {
+  /** For a key that changes hands: when the other entity holds it, which overlaps the time asked for. */
+  readonly during?: { from?: string; to?: string };
+  constructor(detail: DetailDef, value: string, holder: Pick<Entity, 'id' | 'type' | 'label' | 'floor'>, during?: { from?: string; to?: string }) {
     super(`${detail.label} ${value} is already ${holder.label}’s.`);
     this.detail = detail;
     this.value = value;
     this.holder = holder;
+    if (during) this.during = during;
   }
 }
 
@@ -390,6 +399,12 @@ export const migrations: { id: string; sql: string }[] = [
       alter table atlas.ontology_details add column unit text, add column choices text[];`,
   },
   {
+    id: '012_kind_symbols',
+    sql: `
+      -- A kind may carry a military symbol code (ADR 0070), drawn by the frontend in place of its icon.
+      alter table atlas.ontology_types add column symbol text;`,
+  },
+  {
     id: '013_place_location',
     sql: `
       -- Places and facilities keep where they are (augur ADR 0071): a place detail, words or a point
@@ -399,6 +414,21 @@ export const migrations: { id: string; sql: string }[] = [
       select t.key, 'location', 'Location', 'place', false, 'Latitude, longitude, such as 57.70, 11.97; or words', 50, true
       from atlas.ontology_types t
       where t.key in ('place', 'facility') and not exists (select 1 from atlas.ontology_details d where d.key = 'location');`,
+  },
+  {
+    id: '014_binding_cursors',
+    sql: `
+      -- Where Data Atlas has read each app's bindings up to (ADR 0066), one cursor per app and type,
+      -- so an app or type the registry lists later is read from its start. 013 is the map's.
+      create table atlas.binding_cursors (stream text primary key, seq text not null);`,
+  },
+  {
+    id: '015_changing_keys',
+    sql: `
+      -- An identity key that passes between entities over time (an MMSI): known through facts, held by one entity at a time.
+      alter table atlas.ontology_details add column changes boolean not null default false;
+      -- Who held a value when: the check before each new fact of such a key.
+      create index facts_held_value on atlas.facts (property, upper(value)) where superseded_at is null and value is not null;`,
   },
 ];
 
@@ -490,21 +520,24 @@ const applyChange = async (client: pg.PoolClient, c: OntologyChange) => {
     case 'add-type': {
       const t = c.type;
       await client.query(
-        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
-        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null],
+        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
+        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null, t.symbol || null],
       );
       return;
     }
     case 'edit-type':
-      await client.query('update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon) where key = $1', [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null]);
+      await client.query(
+        "update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon), symbol = case when $5::text is null then symbol else nullif($5, '') end where key = $1",
+        [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null, c.symbol ?? null],
+      );
       return;
     case 'add-detail': {
       const d = c.detail;
       await client.query(
-        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
-        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null],
+        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
+        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null, d.changes === true],
       );
       return;
     }
@@ -829,11 +862,11 @@ export class PgAtlasStore {
   async ontology(): Promise<Ontology> {
     const [version, types, details] = await Promise.all([
       this.pool.query<{ version: number }>('select coalesce(max(version), 0) as version from atlas.ontology_versions'),
-      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null }>(
-        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri from atlas.ontology_types order by sort, key',
+      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null; symbol: string | null }>(
+        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol from atlas.ontology_types order by sort, key',
       ),
-      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null }>(
-        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices from atlas.ontology_details order by type, sort, key',
+      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null; changes: boolean }>(
+        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes from atlas.ontology_details order by type, sort, key',
       ),
     ]);
     const relations = await this.pool.query<{ key: string; label: string; inverse: string; from_types: string[]; to_types: string[]; pack: string; pack_term: string; pack_iri: string | null }>(
@@ -849,6 +882,7 @@ export class PgAtlasStore {
           ...(t.parent ? { parent: t.parent } : {}),
           abstract: t.abstract,
           icon: t.icon,
+          ...(t.symbol ? { symbol: t.symbol } : {}),
           pack: t.pack,
           packTerm: t.pack_term,
           ...(t.pack_iri ? { packIri: t.pack_iri } : {}),
@@ -865,6 +899,7 @@ export class PgAtlasStore {
               ...(d.pack_iri ? { packIri: d.pack_iri } : {}),
               ...(d.unit ? { unit: d.unit } : {}),
               ...(d.choices?.length ? { values: d.choices } : {}),
+              ...(d.changes ? { changes: true } : {}),
             })),
         }),
       ),
@@ -966,6 +1001,16 @@ export class PgAtlasStore {
 
   async saveEventCursor(seq: string) {
     await this.pool.query('insert into atlas.event_cursor (id, seq) values (1, $1) on conflict (id) do update set seq = $1', [seq]);
+  }
+
+  /** Where Data Atlas has read one stream of bindings up to (`mandate.intent`). */
+  async bindingCursor(stream: string): Promise<string | undefined> {
+    const { rows } = await this.pool.query<{ seq: string }>('select seq from atlas.binding_cursors where stream = $1', [stream]);
+    return rows[0]?.seq;
+  }
+
+  async saveBindingCursor(stream: string, seq: string) {
+    await this.pool.query('insert into atlas.binding_cursors (stream, seq) values ($1, $2) on conflict (stream) do update set seq = $2', [stream, seq]);
   }
 
   /** Notes that something in another app uses an entity. Doing it twice does no harm. */
@@ -1304,9 +1349,10 @@ export class PgAtlasStore {
    * Records a fact. `replaces` are the floor's current records it takes over from
    * (on the recorded clock); if any was replaced meanwhile, nothing is recorded.
    */
-  async addFact(f: NewFact, replaces: readonly string[] = []): Promise<Fact | undefined> {
+  async addFact(f: NewFact, replaces: readonly string[] = [], held?: HeldKey): Promise<Fact | undefined> {
     const id = `fct_${ulid()}`;
     return this.inTransaction(async (client) => {
+      if (held && f.value !== undefined) await this.checkHeld(client, f, replaces, held);
       if (replaces.length) {
         const { rowCount } = await client.query(
           'update atlas.facts set superseded_at = clock_timestamp(), superseded_by = $2 where id = any($1) and superseded_at is null',
@@ -1321,6 +1367,26 @@ export class PgAtlasStore {
       );
       return fromFactRow(rows[0]);
     });
+  }
+
+  /**
+   * Refuses a fact of a key that changes hands (an MMSI) when another entity holds the same value over
+   * any of the same time. Whoever checks a value waits for whoever else is checking it, so two can't
+   * both pass.
+   */
+  private async checkHeld(client: pg.PoolClient, f: NewFact, replaces: readonly string[], held: HeldKey) {
+    const value = f.value!;
+    await client.query("select pg_advisory_xact_lock(hashtext('atlas.held:' || $1 || ':' || upper($2)))", [f.property, value]);
+    const { rows } = await client.query<{ id: string; type: string; label: string; floor: string; valid_from: Date | null; valid_to: Date | null }>(
+      `select e.id, e.type, e.label, e.floor, f.valid_from, f.valid_to from atlas.facts f join atlas.entities e on e.id = f.entity
+       where f.property = $1 and upper(f.value) = upper($2) and f.superseded_at is null and f.entity <> $3 and e.state = 'active'
+         and e.type = any($4) and not (f.id = any($5))
+         and tstzrange(f.valid_from, f.valid_to) && tstzrange($6::timestamptz, $7::timestamptz)
+       order by f.valid_from nulls first limit 1`,
+      [f.property, value, f.entity, held.types, replaces, f.validFrom ?? null, f.validTo ?? null],
+    );
+    const r = rows[0];
+    if (r) throw new KeyTakenError(held.detail, value, r, { ...(r.valid_from ? { from: r.valid_from.toISOString() } : {}), ...(r.valid_to ? { to: r.valid_to.toISOString() } : {}) });
   }
 
   /** Takes a fact back from now on: its record is superseded by nothing. */
@@ -1415,7 +1481,11 @@ export class PgAtlasStore {
   async byKey(key: string, value: string, floors: readonly string[]): Promise<Entity[]> {
     const { rows } = await this.pool.query<EntityRow>(
       `select ${ENTITY_COLUMNS} from atlas.entities where state = 'active' and floor = any($3)
-         and id in (select entity from atlas.entity_keys where key = $1 and upper(value) = upper($2))`,
+         and (id in (select entity from atlas.entity_keys where key = $1 and upper(value) = upper($2))
+           -- A key that changes hands names whoever holds it now, as some floor in sight records it.
+           or id in (select f.entity from atlas.facts f join atlas.ontology_details d on d.key = f.property and d.changes
+                     where f.property = $1 and upper(f.value) = upper($2) and f.superseded_at is null and f.floor = any($3)
+                       and tstzrange(f.valid_from, f.valid_to) @> now()))`,
       [key, value, floors],
     );
     return rows.map(fromRow);

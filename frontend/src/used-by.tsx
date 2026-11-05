@@ -73,6 +73,14 @@ export function UsedBy({ api, entity, onOpenIntent, onOpenDocument, onOpenUnit }
       icon: what.icon,
     };
   });
+  // Things another app binds to it (ADR 0066), by the kind its events name. Atlas can't open them: their app can.
+  const others: ListItem[] = (used?.others ?? []).map((o) => ({
+    id: `${o.app}:${o.kind}:${o.id}`,
+    title: `A ${o.kind}`,
+    detail: [`Linked as ${o.role}`, o.floorName ? `kept on ${o.floorName}` : '', `linked ${relativeTime(o.since)}`, 'open it from the app that keeps it'].filter(Boolean).join(' · '),
+    icon: 'link',
+    disabled: true,
+  }));
   const documents: ListItem[] = (used?.documents ?? []).map((d) => ({
     id: `${d.app}:${d.id}`,
     title: d.title,
@@ -104,7 +112,7 @@ export function UsedBy({ api, entity, onOpenIntent, onOpenDocument, onOpenUnit }
         label="Linked from"
         density="compact"
         noun={['record', 'records']}
-        items={records}
+        items={[...records, ...others]}
         loading={!used && !failure}
         empty="Nothing is linked to it. A library, folder or document can be linked to it as what it’s about."
         onOpen={(item) => {
