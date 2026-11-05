@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@augur/app-tools':
-        specifier: npm:@harry-burton-dev/augur-app-tools@^0.2.0
-        version: '@harry-burton-dev/augur-app-tools@0.2.0'
+        specifier: npm:@harry-burton-dev/augur-app-tools@^0.4.0
+        version: '@harry-burton-dev/augur-app-tools@0.4.0(fastify@5.12.8)'
       '@changesets/cli':
         specifier: ^2.31.1
         version: 2.31.1(@types/node@22.20.5)
@@ -534,8 +534,8 @@ packages:
       react: ^19.3.1
       react-dom: ^19.3.1
 
-  '@harry-burton-dev/augur-app-tools@0.2.0':
-    resolution: {integrity: sha512-Of9K00b3paH+8T8xzWtVvYPo0s/fUETjcFieL2UxS0voYwwUJHHzwkQuKpq1NnLdXiTTLYBlw4Yrclf/+l/xcg==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-tools/0.2.0/84d6593bb1dc48901f65466899a23c2ec372638f}
+  '@harry-burton-dev/augur-app-tools@0.4.0':
+    resolution: {integrity: sha512-jsZBYAAKoJR+MWjg2KVkYZDBlJSwsck2Ks65OZSQu4RsL8/T2zTdK1z4Pgse0HFY5PWv7fUPDTn91dwHhwHkLw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-tools/0.4.0/3ee30e4a0e123bf81a567ec7883cc93c528f2880}
     hasBin: true
 
   '@harry-burton-dev/augur-kit-common@0.7.0':
@@ -552,11 +552,13 @@ packages:
       msw:
         optional: true
 
-  '@harry-burton-dev/augur-service-kit@0.11.0':
-    resolution: {integrity: sha512-0vZHVGhlz9pNgzjc6ZrifwoMbNYhLl8U2fF5bgBf9Ez2ZmUZ80Afei1uJdY6DwRhA2U8qyAqeeG75bA5wU4D9g==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-service-kit/0.11.0/ca84c1bd04f8303b7b8e14f496d619a7f742ae53}
-
   '@harry-burton-dev/augur-service-kit@0.14.0':
     resolution: {integrity: sha512-QsQycMlLR3vMYhSDIL3b7TIT7RshfdR7GCO8TVzdE55OZR1AoQWQze2DEFbPdoenwE4PVqf3uNi69thiN0m7ng==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-service-kit/0.14.0/aa974dd245cc170834522ba63555a691fa331dd9}
+    peerDependencies:
+      fastify: ^5.6.0
+
+  '@harry-burton-dev/augur-service-kit@0.15.0':
+    resolution: {integrity: sha512-60yQOfDJ1u2Hwm0RfasME9gjWUDVUUrucUaM1h0e1z4dIZa6fcGQAf8b9qIVKamqnISo2wAutfKinenM2Rx3pw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-service-kit/0.15.0/54c02c187e176b74bf08544b8248ac788e1e4228}
     peerDependencies:
       fastify: ^5.6.0
 
@@ -3555,11 +3557,14 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  '@harry-burton-dev/augur-app-tools@0.2.0':
+  '@harry-burton-dev/augur-app-tools@0.4.0(fastify@5.12.8)':
     dependencies:
-      '@augur/service-kit': '@harry-burton-dev/augur-service-kit@0.11.0'
+      '@augur/service-kit': '@harry-burton-dev/augur-service-kit@0.15.0(fastify@5.12.8)'
       semver: 7.8.6
     transitivePeerDependencies:
+      - '@dbos-inc/dbos-enterprise'
+      - fastify
+      - pg-native
       - supports-color
 
   '@harry-burton-dev/augur-kit-common@0.7.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
@@ -3577,8 +3582,9 @@ snapshots:
     optionalDependencies:
       msw: 2.15.0(@types/node@22.20.5)(typescript@5.9.3)
 
-  '@harry-burton-dev/augur-service-kit@0.11.0':
+  '@harry-burton-dev/augur-service-kit@0.14.0(fastify@5.12.8)':
     dependencies:
+      '@dbos-inc/dbos-sdk': 5.4.0
       '@opentelemetry/api': 1.10.0
       '@opentelemetry/instrumentation': 0.300.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/instrumentation-http': 0.300.0(@opentelemetry/api@1.10.0)
@@ -3586,11 +3592,18 @@ snapshots:
       '@opentelemetry/instrumentation-pino': 0.70.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/instrumentation-undici': 0.34.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/sdk-node': 0.300.0(@opentelemetry/api@1.10.0)
+      '@react-email/render': 2.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      fastify: 5.12.8
       jose: 6.2.15
+      nodemailer: 10.3.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
     transitivePeerDependencies:
+      - '@dbos-inc/dbos-enterprise'
+      - pg-native
       - supports-color
 
-  '@harry-burton-dev/augur-service-kit@0.14.0(fastify@5.12.8)':
+  '@harry-burton-dev/augur-service-kit@0.15.0(fastify@5.12.8)':
     dependencies:
       '@dbos-inc/dbos-sdk': 5.4.0
       '@opentelemetry/api': 1.10.0
