@@ -509,6 +509,23 @@ export interface MergeBody {
   cites?: { observation: string; stance: 'for' | 'against'; note?: string }[];
 }
 
+/** An entity that might be the same real thing as another, why it's suggested, and whether the caller may merge the two from here. */
+export interface Alike {
+  entity: Extract<OtherEnd, { kind: 'entity' }>;
+  why: Match['why'];
+  /** For a key: which one. For a similar spelling: the name it's like. */
+  detail?: string;
+  score?: number;
+  /** Whether the caller may place the entity asked about under this one, here and now; why not when they can't. */
+  merge: { into: boolean; why?: string };
+}
+
+/** `GET /entities/:id/alike`: up to five entities that might be the same, and how they were looked for. */
+export interface AlikeList {
+  alike: Alike[];
+  matching: Matching;
+}
+
 export interface UndoMergeBody {
   why: string;
   /** Observations the merge cited for it that turned out to mislead: marked, never removed. */

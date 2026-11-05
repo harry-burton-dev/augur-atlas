@@ -3,6 +3,8 @@ import { FLOOR_WORDS } from '../../service/src/api-types.js';
 
 import type {
   Adoption,
+  Alike,
+  AlikeList,
   CandidateDecision,
   Candidates,
   DetailDef,
@@ -10,6 +12,7 @@ import type {
   DisputeView as Dispute,
   EntityFields,
   EntityList,
+  EntityMerge,
   EntityMerges,
   EntityUses as UsedBy,
   EntityView as Entity,
@@ -43,7 +46,7 @@ import type {
 
 // The wire types are written once, in the service's api-types.ts, and shared with it. Where the service keeps a
 // record under the same name, the page's shape is a `...View` there; the pages know it by the shorter name here.
-export type { Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
+export type { Alike, AlikeList, Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
 export type {
   Adoption,
   DetailDef,
@@ -251,6 +254,16 @@ export class AtlasApi {
     });
     if (!res.ok) throw await AppError.fromResponse(res, this.names);
     return res.text();
+  }
+
+  /** Entities that might be the same real thing as this one, each saying why and whether it can be merged from here. */
+  alike(id: string) {
+    return this.call<AlikeList>('GET', `/entities/${encodeURIComponent(id)}/alike`);
+  }
+
+  /** Places this entity under another found to be the same thing, saying why. */
+  merge(id: string, into: string, why: string) {
+    return this.call<EntityMerge>('POST', `/entities/${encodeURIComponent(id)}/merge`, { into, why });
   }
 
   /** An entity's merges, either way, with who decided each, why and on what evidence. */

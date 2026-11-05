@@ -256,8 +256,56 @@ describe('atlas', () => {
     '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
     '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
     '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], records: [], documents: [] }),
+    '/api/atlas/v1/entities/ent_01/alike': () => Response.json({ alike: [], matching: { spelling: true, meaning: true, at: '2026-11-05T00:00:00Z' } }),
     '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
   };
+
+  it('offers what might be the same, saying why, and merges it into one after asking why', async () => {
+    const GULL = { kind: 'entity', id: 'ent_05', type: 'vessel', label: 'N. Tern', state: 'active', floorName: 'Maritime desk' };
+    const PORT = { kind: 'entity', id: 'ent_06', type: 'vessel', label: 'Northern Tern II', state: 'active', floorName: 'Operations' };
+    const fetch = answering({
+      ...ENTITY_ROUTES,
+      '/api/atlas/v1/entities/ent_01/alike': () =>
+        Response.json({
+          alike: [
+            { entity: GULL, why: 'key', detail: 'IMO number', merge: { into: true } },
+            { entity: PORT, why: 'similar', detail: 'Northern Tern II', score: 0.82, merge: { into: false, why: 'Go to the floor it’s kept on to merge it.' } },
+          ],
+          matching: { spelling: true, meaning: false, why: 'Matching by meaning is off.', at: '2026-11-05T00:00:00Z' },
+        }),
+    });
+    let merged: unknown;
+    const answer = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/atlas/v1/entities/ent_01/merge') {
+        merged = await bodyOf(init);
+        return Response.json({ id: 'mrg_1' }, { status: 201 });
+      }
+      return answer(path);
+    });
+    const el = await open(ctx(fetch, '/entities/ent_01'));
+    const section = el.querySelector('.atlas-alike');
+    expect(rowsOf(section).map((r) => [r.title, r.detail])).toEqual([
+      ['N. Tern', 'Same IMO number · kept on Maritime desk'],
+      ['Northern Tern II', 'Spelt nearly alike (“Northern Tern II”), 0.82 · kept on Operations'],
+    ]);
+    expect(section?.textContent).toMatch(/Matching by meaning is off/);
+    const merges = [...(section?.querySelectorAll('button') ?? [])].filter((b) => b.textContent?.trim() === 'Merge into it…');
+    expect(merges.map(shut)).toEqual([false, true]);
+    expect(reasonOf(merges[1])).toMatch(/Go to the floor/);
+    await act(async () => merges[0].click());
+    await settle();
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toMatch(/Merge Northern Tern into N. Tern\?/);
+    const why = dialog.querySelector('textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(why, 'Same IMO number on the invoice');
+      why.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button('Merge', dialog)!.click());
+    await settle();
+    expect(merged).toEqual({ into: 'ent_05', why: 'Same IMO number on the invoice' });
+  });
 
   it('shows an entity, with what can’t be done and why, instead of hiding it', async () => {
     const el = await open(ctx(answering(ENTITY_ROUTES), '/entities/ent_01'));

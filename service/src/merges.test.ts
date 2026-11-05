@@ -100,4 +100,21 @@ describe.runIf(process.env.DATABASE_URL)('Merging entities found to be the same'
     expect((await call('POST', `/v1/entities/${ship.id}/merge`, LEAD, { into: ship.id, why: 'Itself' })).json()).toMatchObject({ error: 'same-entity' });
     expect((await call('POST', `/v1/entities/${ship.id}/merge`, LEAD, { into: firm.id, why: 'Same name' })).json()).toMatchObject({ error: 'different-types' });
   });
+  it('suggests what might be the same, saying why, and says when it can’t be merged from here', async () => {
+    const first = (await call('POST', '/v1/entities', LEAD, { type: 'vessel', label: 'Kittiwake', aliases: ['MV Kittiwake'] })).json();
+    const twin = (await call('POST', '/v1/entities', MEMBER, { type: 'vessel', label: 'MV Kittiwake' })).json();
+    // Only things of its kind are looked for: a port of the same name isn't the same thing.
+    const port = (await call('POST', '/v1/entities', LEAD, { type: 'port', label: 'Kittiwake' })).json();
+
+    const asLead = (await call('GET', `/v1/entities/${first.id}/alike`, LEAD)).json();
+    expect(asLead.alike.map((a: { entity: { id: string } }) => a.entity.id)).toEqual([twin.id]);
+    expect(asLead.alike.map((a: { entity: { id: string } }) => a.entity.id)).not.toContain(port.id);
+    expect(asLead.alike.find((a: { entity: { id: string } }) => a.entity.id === twin.id)).toMatchObject({ why: 'name', entity: { label: 'MV Kittiwake', floorName: 'Maritime desk' }, merge: { into: true } });
+    expect(asLead.matching).toMatchObject({ meaning: false, why: expect.stringMatching(/meaning/) });
+
+    // Whoever added it may merge it; another member may only see the suggestion, and why.
+    const asMember = (await call('GET', `/v1/entities/${first.id}/alike`, MEMBER)).json();
+    expect(asMember.alike.find((a: { entity: { id: string } }) => a.entity.id === twin.id)).toMatchObject({ merge: { into: false, why: expect.stringMatching(/leads, or whoever added it/) } });
+    expect((await call('GET', `/v1/entities/${twin.id}/alike`, MEMBER)).json().alike[0]).toMatchObject({ entity: { id: first.id }, merge: { into: true } });
+  });
 });
