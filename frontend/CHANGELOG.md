@@ -1,5 +1,11 @@
 # @apps/atlas-frontend
 
+## 0.3.0
+
+### Minor Changes
+
+- e467a3e: Data Atlas follows Artifacts' entity bindings (`folio.record.entity-bound` and `-unbound`): an entity's "Used by" now lists the libraries, folders and documents linked to it, and opening one asks Artifacts.
+
 ## 0.2.3
 
 ### Patch Changes
