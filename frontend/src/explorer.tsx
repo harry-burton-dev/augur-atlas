@@ -261,7 +261,7 @@ export function Explorer({ api, ontology, centre, floorName = '', onOpenEntity, 
     const isCentre = n.ref.id === open.centre;
     return (
       <>
-        <Heading eyebrow={`${typeLabel(n)} · ${n.floorName === 'Org' ? 'Org floor' : n.floorName === 'You' ? 'Your own floor' : n.floorName}`} heading={n.ref.label} size="s" />
+        <Heading eyebrow={`${typeLabel(n)} · ${n.floorName}`} heading={n.ref.label} size="s" />
         {n.state === 'retired' ? <p className="atlas-note">Retired. It keeps its id, so its links still say what it was.</p> : null}
         {n.state === 'merged' ? <p className="atlas-note">Merged into another entity. It keeps its id and its links, so the merge can be undone.</p> : null}
         {links.length ? (

@@ -23,6 +23,7 @@ const people: People = {
   principals: async (person) => PRINCIPALS[person] ?? [`person:${person}`, 'org'],
   teamPath: async (team) => PATHS[team] ?? [team],
   teamNames: async (ids) => new Map(ids.filter((id) => NAMES.has(id)).map((id) => [id, NAMES.get(id)!])),
+  orgName: async () => 'Harbour Group',
 };
 
 const on = (id: string, workspace: CallerWorkspace): Caller => ({ id, name: id, departments: [], roles: [], workspace });
@@ -109,10 +110,10 @@ describe.runIf(process.env.DATABASE_URL)('What Data Atlas knows', () => {
 
   it('lets a lead raise an observation to a floor above, where that floor’s leads may accept it', async () => {
     const [mine] = (await knowledge(SAM_LEAD, kestrel.id)).observations;
-    expect(mine.can.raiseTo.map((f: { name: string }) => f.name).sort()).toEqual(['Operations', 'Org']);
+    expect(mine.can.raiseTo.map((f: { name: string }) => f.name).sort()).toEqual(['Harbour Group', 'Operations']);
     const sideways = await call('POST', `/v1/observations/${mine.id}/raise`, SAM_LEAD, { to: 'tree:t-fin' });
     expect(sideways.statusCode).toBe(400);
-    expect(sideways.json().message).toMatch(/It can go to Org, Operations/);
+    expect(sideways.json().message).toMatch(/It can go to Harbour Group, Operations/);
     const raised = await call('POST', `/v1/observations/${mine.id}/raise`, SAM_LEAD, { to: 'tree:t-ops' });
     expect(raised.statusCode).toBe(201);
     expect(raised.json()).toMatchObject({ floor: 'tree:t-ops', floorName: 'Operations', raisedFrom: mine.id, value: 'Panama', grade: 'B2' });
@@ -143,7 +144,7 @@ describe.runIf(process.env.DATABASE_URL)('What Data Atlas knows', () => {
     const res = await call('POST', `/v1/entities/${kestrel.id}/observations`, SAM_LEAD, { property: 'operated-by', target: northwind.id, source: BY_HAND, accept: true });
     expect(res.statusCode).toBe(201);
     const fromShip = (await knowledge(SAM, kestrel.id)).facts.find((f: { property: string }) => f.property === 'operated-by');
-    expect(fromShip).toMatchObject({ direction: 'out', other: { kind: 'entity', id: northwind.id, label: 'Northwind Shipping', floorName: 'Org' } });
+    expect(fromShip).toMatchObject({ direction: 'out', other: { kind: 'entity', id: northwind.id, label: 'Northwind Shipping', floorName: 'Harbour Group' } });
     const fromOperator = (await knowledge(SAM, northwind.id)).facts;
     expect(fromOperator).toEqual([expect.objectContaining({ direction: 'in', property: 'operated-by', other: expect.objectContaining({ id: kestrel.id }) })]);
     // The org floor doesn't see the desk's link.

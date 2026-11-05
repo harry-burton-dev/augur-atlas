@@ -240,8 +240,23 @@ export interface EntityRights {
   why?: string;
 }
 
-/** An entity as the caller sees it: with the name of the floor it's kept on ("Org", "You", a team's name) and what they may do. */
-export type EntityView = Entity & { floorName: string; can: EntityRights };
+/**
+ * What kind of floor something is kept on, from where the caller stands: the
+ * org's, their own, someone else's own, or a team's. Words and marks follow
+ * this, never a floor's name, since names differ in every deployment.
+ */
+export type FloorKind = 'org' | 'own' | 'personal' | 'team';
+
+/** The words for a floor that has no name of its own, or whose name couldn't be asked for. */
+export const FLOOR_WORDS = {
+  own: 'Your own floor',
+  someonesOwn: 'Someone’s own floor',
+  unnamedTeam: 'A team',
+  unnamedOrg: 'The organisation',
+} as const;
+
+/** An entity as the caller sees it: with the name and kind of the floor it's kept on (the org's name, your own floor, a team's name) and what they may do. */
+export type EntityView = Entity & { floorName: string; floorKind: FloorKind; can: EntityRights };
 
 /** `GET /entities`: what shows from this floor. */
 export interface EntityList {
@@ -684,6 +699,7 @@ export interface GraphNode {
   ref: { kind: 'entity'; id: string; type: string; label: string };
   state: Entity['state'];
   floorName: string;
+  floorKind: FloorKind;
   depth: number;
 }
 

@@ -10,6 +10,7 @@ const people: People = {
   principals: async (person) => (person === 'sam' ? ['person:sam', 'team:t-mar', 'tree:t-mar', 'org'] : [`person:${person}`, 'org']),
   teamPath: async (team) => [team],
   teamNames: async (ids) => new Map(ids.filter((id) => id === 't-mar').map((id) => [id, 'Maritime desk'])),
+  orgName: async () => 'Harbour Group',
 };
 const on = (id: string, workspace: CallerWorkspace): Caller => ({ id, name: id, departments: [], roles: [], workspace });
 const ORG: CallerWorkspace = { id: 'w-org', kind: 'org', role: 'member' };

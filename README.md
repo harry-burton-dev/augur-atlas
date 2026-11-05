@@ -45,7 +45,7 @@ Under `/api/atlas/v1`, on the floor in `X-Workspace-Id`:
 | `POST /ontology/candidates/decide` | An admin adopts a candidate (as the change given) or dismisses it, for every proposal that asked |
 | `GET /entities?q=&type=&limit=&offset=` | What shows from this floor, by name, other name or identity key; `type` takes its subtypes too. `seeing` names the floors it comes from |
 | `POST /entities` | Adds one on this floor: `{ type, label, aliases?, description?, details? }` |
-| `GET /entities/:id` | One entity, with `floorName` and `can` (`edit`, `retire`, and `why` when not) |
+| `GET /entities/:id` | One entity, with `floorName` (the organisation's name as Admin sets it, "Your own floor", or a team's name), `floorKind` (`org`, `own`, `personal`, `team`) and `can` (`edit`, `retire`, and `why` when not) |
 | `PATCH /entities/:id` | Changes it, from the floor it's kept on |
 | `POST /entities/:id/retire` | Takes it out of use (that floor's leads, or whoever added it); its id stays and its keys are freed |
 | `POST /entities/resolve` | For apps keeping entity links: `{ refs: [{ id }] }` (up to 200) → each as the caller sees it now: `{ id, ref, state, floorName }`, `{ id, hidden, reason, message }` or `{ id, missing }` |

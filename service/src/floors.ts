@@ -1,5 +1,5 @@
 import type { CallerWorkspace } from '@augur/service-kit';
-import type { Unseen } from './api-types.ts';
+import type { FloorKind, Unseen } from './api-types.ts';
 
 /**
  * Knowledge in Data Atlas is fenced by floor (Harry, 27 October 2026). Each
@@ -15,6 +15,10 @@ import type { Unseen } from './api-types.ts';
 /** The principal a thing made while standing on this floor is kept under. */
 export const floorPrincipal = (person: string, workspace: CallerWorkspace) =>
   workspace.kind === 'personal' ? `person:${person}` : workspace.kind === 'org' ? 'org' : `tree:${workspace.id}`;
+
+/** What kind of floor a principal is, from where `person` stands. */
+export const floorKindOf = (person: string, floor: string): FloorKind =>
+  floor === 'org' ? 'org' : floor === `person:${person}` ? 'own' : floor.startsWith('person:') ? 'personal' : 'team';
 
 /**
  * Which floors' knowledge shows while standing on this one. `principals` are
