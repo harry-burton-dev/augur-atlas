@@ -228,6 +228,9 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
   it('needs a floor to stand on', async () => {
     const res = await call('GET', '/v1/entities', person('sam'));
     expect(res.statusCode).toBe(400);
+    // A problem (RFC 9457), still readable by clients that look at `message`.
+    expect(res.headers['content-type']).toMatch(/^application\/problem\+json/);
+    expect(res.json()).toMatchObject({ status: 400, reason: 'floor_needed', detail: expect.stringMatching(/what shows depends on it/) });
     expect(res.json().message).toMatch(/what shows depends on it/);
   });
 
