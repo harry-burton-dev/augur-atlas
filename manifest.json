@@ -3,7 +3,7 @@
   "name": "Data Atlas",
   "route": "/atlas",
   "entry": "/apps/atlas/entry.js",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "sdk": "^1.11.0 || ^2.0.0",
   "description": "The things your organisation knows about, and what is known of them",
   "icon": "atlas",
