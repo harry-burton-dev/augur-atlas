@@ -1,5 +1,5 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { callerCheckFromEnv, callerFromHeaders, health, packageVersion, signedCallers, type Caller, type CallerCheck, type CallerWorkspace } from '@augur/service-kit';
+import { appServer, packageVersion, Problem, sendProblem, serviceFastifyOptions, signedInCaller, type CallerCheck, type OnFloor } from '@augur/service-kit';
 import type { EntityFields, EntityList, EntityRights, EntityView, SubgraphQuery } from './api-types.ts';
 import { auditFromEnv, type Audit } from './audit.ts';
 import { floorPrincipal, unseen, viewFloors } from './floors.ts';
@@ -11,6 +11,7 @@ import { proposalRoutes } from './proposals.ts';
 import { resolver, type Embed } from './resolve.ts';
 import { studioRoutes } from './studio.ts';
 import { KeyTakenError, refOf, type Entity, type PgAtlasStore } from './store.ts';
+import { manifest } from './manifest.ts';
 
 /** The major version of the API this service serves. Its routes go under /v1, as the platform's do. */
 export const API_VERSION = 'v1';
@@ -26,7 +27,7 @@ export interface Options {
   embed?: Embed;
 }
 
-export type OnFloor = Caller & { workspace: CallerWorkspace };
+export type { OnFloor };
 
 /** What the caller may do with an entity, and the entity as they see it (see `api-types.ts`). */
 export type { EntityRights, EntityView };
@@ -42,27 +43,26 @@ const knownName = (name: string) => (name === UNNAMED_TEAM ? undefined : name);
 const REFS = { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 64 } }, required: ['id'] } } as const;
 const ID_PARAMS = { type: 'object', properties: { id: { type: 'string', maxLength: 64 } }, required: ['id'] } as const;
 
-export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), people = peopleFromEnv(), audit, embed }: Options) => {
-  const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit, embed }: Options) => {
+  const app = Fastify(serviceFastifyOptions());
   const record = audit ?? auditFromEnv((entry) => app.log.info({ audit: entry }, 'audit (no audit log here)'));
   const recorded = (entry: Parameters<Audit>[0]) =>
     record(entry).catch((err: Error) => app.log.error({ err: err.message, action: entry.action, target: entry.target }, 'could not record in the audit log'));
-  // Only the gateway's signed word says who is calling: headers anyone could send are dropped.
-  app.addHook('onRequest', signedCallers(callers));
-  app.get('/healthz', async () => health('atlas', version, API_VERSION));
+  // Only the gateway's signed word says who is calling, every error is problem details, and /healthz says what runs.
+  await appServer(app, { manifest, version, api: API_VERSION, ...(callers ? { callers } : {}) });
 
-  /** The caller and the floor they're on, or a refusal already sent. What you see in Data Atlas depends on where you stand. */
+  /** The caller and the floor they're on, or a problem already sent (401 signed out, 400 no floor). What you see in Data Atlas depends on where you stand. */
+  const signedIn = signedInCaller(manifest);
   const onFloor = (req: FastifyRequest, reply: FastifyReply): OnFloor | undefined => {
-    const caller = callerFromHeaders(req.headers);
-    if (!caller) {
-      reply.code(401).send({ error: 'unauthenticated', message: 'Sign in to use Data Atlas.' });
+    try {
+      const caller = signedIn(req);
+      if (!caller.workspace) throw new Problem(400, 'floor_needed', 'Say which floor you’re standing on (X-Workspace-Id): what shows depends on it.');
+      return caller as OnFloor;
+    } catch (err) {
+      if (!(err instanceof Problem)) throw err;
+      sendProblem(reply, err);
       return undefined;
     }
-    if (!caller.workspace) {
-      reply.code(400).send({ error: 'floor-needed', message: 'Say which floor you’re standing on (X-Workspace-Id): what shows depends on it.' });
-      return undefined;
-    }
-    return caller as OnFloor;
   };
 
   /** What the caller stands for, and which floors' entities show from where they stand. */
@@ -163,7 +163,7 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
   await app.register(
     async (app) => {
       app.get('/ontology', async (req, reply) => {
-        if (!callerFromHeaders(req.headers)) return reply.code(401).send({ error: 'unauthenticated', message: 'Sign in to use Data Atlas.' });
+        signedIn(req);
         return store.ontology();
       });
 
