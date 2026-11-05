@@ -164,6 +164,26 @@ export const withSubtypes = (ontology: Ontology, type: string) => {
   return [...found];
 };
 
+/** The floor a team's kind or detail is kept for: from that team down. */
+export const teamFloor = (team: string) => `tree:${team}`;
+
+/**
+ * The ontology as someone sees it from where they stand: a team's kinds and details only from that
+ * team down (`principals` hold `tree:<team>` for each team they're on or under). A kind under a
+ * team's kind goes with it, and a kind of link keeps only the kinds that show, or goes when none do.
+ */
+export const ontologyFor = (ontology: Ontology, principals: readonly string[]): Ontology => {
+  const sees = (floor?: string) => !floor || principals.includes(floor);
+  const byKey = new Map(ontology.types.map((t) => [t.key, t]));
+  const shows = (t: TypeDef | undefined): boolean => !t || (sees(t.floor) && shows(t.parent ? byKey.get(t.parent) : undefined));
+  const types = ontology.types.filter((t) => shows(t)).map((t) => ({ ...t, details: t.details.filter((d) => sees(d.floor)) }));
+  const kept = new Set(types.map((t) => t.key));
+  const relations = ontology.relations
+    .map((r) => ({ ...r, from: r.from.filter((k) => kept.has(k)), to: r.to.filter((k) => kept.has(k)) }))
+    .filter((r) => r.from.length && r.to.length);
+  return { ...ontology, types, relations };
+};
+
 /** True when `type` is `kind` or a kind below it. */
 export const isA = (ontology: Ontology, type: string, kind: string) => {
   const byKey = new Map(ontology.types.map((t) => [t.key, t]));

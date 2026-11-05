@@ -49,6 +49,8 @@ export interface AtlasAppProps {
   api: AtlasApi;
   floorName: string;
   floorKind: 'personal' | 'team' | 'org';
+  /** On a team's floor, how a kind kept for it names it (`tree:<team>`). */
+  teamFloor?: string;
   /** Who is looking: Triage says which proposals are theirs. */
   userId: string;
   /** Asks the person for a document, for an observation's source (the SDK's pickDocument). */
@@ -68,7 +70,7 @@ export interface AtlasAppProps {
  * floor the person is standing on. A floor shows what is kept on it and on the
  * floors above it; whatever can't be seen or done says why (explain, never hide).
  */
-export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, openDocument, openUnit, openIntent, pickIntent }: AtlasAppProps) {
+export function AtlasApp({ api, floorName, floorKind, teamFloor, userId, pickDocument, openDocument, openUnit, openIntent, pickIntent }: AtlasAppProps) {
   // Where the person is comes from the address, so a place can be shared and Back goes to the last one.
   const place = usePlace();
   const goTo = useGoTo();
@@ -454,7 +456,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
       main = <Triage api={api} ontology={ontology} place={place} userId={userId} onMove={move} onOpenDocument={openDocument} />;
       break;
     case 'ontology':
-      main = <OntologyView api={api} ontology={ontology} onChange={keep} onOpenEntity={(id) => move({ page: 'entity', id })} />;
+      main = <OntologyView api={api} ontology={ontology} onChange={keep} onOpenEntity={(id) => move({ page: 'entity', id })} floorName={floorName} {...(teamFloor ? { teamFloor } : {})} />;
       break;
     default:
       main = listPage();
@@ -573,6 +575,7 @@ export function App({ ctx }: AppProps<MountContext>) {
       api={api}
       floorName={c.workspace.name}
       floorKind={c.workspace.kind}
+      {...(c.workspace.kind === 'team' ? { teamFloor: `tree:${c.workspace.id}` } : {})}
       userId={c.user.id}
       pickDocument={() => pickDocument(c, { purpose: 'Where it was read' })}
       openDocument={(ref) => void openDocument(c, ref)}

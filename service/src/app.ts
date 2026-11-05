@@ -3,7 +3,7 @@ import { appServer, packageVersion, Problem, sendProblem, serviceFastifyOptions,
 import { FLOOR_WORDS, type EntityFields, type EntityList, type EntityRights, type EntityView, type SubgraphQuery } from './api-types.ts';
 import { auditFromEnv, type Audit } from './audit.ts';
 import { floorKindOf, floorPrincipal, unseen, viewFloors } from './floors.ts';
-import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } from './ontology.ts';
+import { checkDetail, detailsOf, normaliseDetail, ontologyFor, withSubtypes, type Ontology } from './ontology.ts';
 import { peopleFromEnv, type People } from './people.ts';
 import { knowledgeRoutes, subgraph, type Atlas } from './knowledge.ts';
 import { mapRoutes, type MapOptions } from './map.ts';
@@ -169,7 +169,27 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
   };
 
   /** What a floor's knowledge routes need from here. */
+  /**
+   * The ontology from where the caller stands: a team's kinds and details only from that team down.
+   * What they add or record is checked against this. Admins see every kind in the studio (`all`),
+   * each team's named, but still record only what shows from their floor.
+   */
+  const ontologySeen = async (caller: OnFloor, all = false): Promise<Ontology> => {
+    const ontology = await store.ontology();
+    const floors = [...new Set(ontology.types.flatMap((t) => [t.floor, ...t.details.map((d) => d.floor)]).filter((f): f is string => !!f))];
+    if (!floors.length) return ontology;
+    if (all && caller.roles.includes('admin')) {
+      const named = await nameFloors(caller, floors);
+      return {
+        ...ontology,
+        types: ontology.types.map((t) => ({ ...t, ...(t.floor ? { floorName: named(t.floor) } : {}), details: t.details.map((d) => (d.floor ? { ...d, floorName: named(d.floor) } : d)) })),
+      };
+    }
+    return ontologyFor(ontology, (await sight(caller)).principals);
+  };
+
   const atlas: Atlas = {
+    ontologySeen,
     store,
     onFloor,
     sight,
@@ -186,8 +206,9 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
   await app.register(
     async (app) => {
       app.get('/ontology', async (req) => {
-        signedIn(req);
-        return store.ontology();
+        const caller = signedIn(req);
+        // Without a floor, only the whole organisation's kinds.
+        return caller.workspace ? ontologySeen(caller as OnFloor, true) : ontologyFor(await store.ontology(), []);
       });
 
       app.get<{ Querystring: { q?: string; type?: string[]; limit?: number; offset?: number } }>(
@@ -234,7 +255,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
         async (req, reply) => {
           const caller = onFloor(req, reply);
           if (!caller) return reply;
-          const ontology = await store.ontology();
+          const ontology = await ontologySeen(caller);
           const type = ontology.types.find((t) => t.key === req.body.type);
           if (!type) return reply.code(400).send({ error: 'unknown-type', message: `The ontology has no kind of thing called “${req.body.type}”.` });
           if (type.abstract) return reply.code(400).send({ error: 'abstract-type', message: `${type.label} is a heading for other kinds: pick one of those.` });
@@ -341,7 +362,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
           const { caller, entity } = found;
           const can = rightsOn(caller, entity, (await nameFloors(caller, [entity.floor]))(entity.floor));
           if (!can.edit) return reply.code(403).send({ error: 'cannot-edit', message: can.why });
-          const ontology = await store.ontology();
+          const ontology = await ontologySeen(caller);
           const details = req.body.details && tidyDetails(ontology, entity.type, req.body.details);
           if (typeof details === 'string') return reply.code(400).send({ error: 'bad-detail', message: details });
           try {

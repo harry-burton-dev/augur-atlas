@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { CHOICE_VALUES, DETAIL_KINDS, SYMBOL_CODE, type Adoption, type CandidateDecision, type Candidates, type OntologyChanged, type Packs, type PackUpload, type PackView } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Atlas } from './knowledge.ts';
-import { isA, type DetailDef, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
+import { isA, teamFloor, type DetailDef, type Ontology, type OntologyChange, type TypeDef } from './ontology.ts';
 import { owlTurtle, packFromTurtle, type PackTerm } from './packs.ts';
 import type { ProposedTerm } from './store.ts';
 
@@ -41,6 +41,9 @@ export const pluralOf = (label: string) =>
 const words = (s: string | undefined, what: string, most = 80) => (!s?.trim() ? `${what} can’t be blank.` : s.length > most ? `${what} is too long.` : undefined);
 
 const UNIT = { type: 'string', maxLength: 24 } as const;
+/** A team's floor, as a kind or detail kept for it names it: from that team down. */
+const TEAM_FLOOR = /^tree:[A-Za-z0-9_-]{1,64}$/;
+const FLOOR = { type: 'string', maxLength: 80 } as const;
 const VALUES = { type: 'array', maxItems: CHOICE_VALUES, items: { type: 'string', maxLength: 80 } } as const;
 
 /** Why what a detail holds won't do: a quantity needs its unit, a choice its values, and nothing else carries either. */
@@ -74,6 +77,9 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
         if (!KEY.test(t.key)) return `“${t.key}” won’t do as a key: lower-case letters, digits and dashes, starting with a letter.`;
         if (type(t.key)) return `There’s already a kind called “${t.key}” (${named(t.key)}).`;
         if (t.parent && !type(t.parent)) return `There’s no kind “${t.parent}” for ${t.label} to go under.`;
+        if (t.floor && !TEAM_FLOOR.test(t.floor)) return 'A kind is kept for the whole organisation or for one team’s floor.';
+        const above = t.parent ? type(t.parent)?.floor : undefined;
+        if (above && t.floor && t.floor !== above) return `${named(t.parent!)} is kept for another team’s floor, so a kind under it is kept for that floor too.`;
         const bad = words(t.label, 'The name') ?? words(t.plural, 'The plural') ?? (ICON.test(t.icon) ? undefined : 'Pick an icon from the list.') ?? (t.symbol && !SYMBOL.test(t.symbol) ? SYMBOL_WRONG : undefined);
         if (bad) return bad;
         if (o.types.some((x) => x.label.toLowerCase() === t.label.toLowerCase())) return `There’s already a kind named ${t.label}.`;
@@ -86,6 +92,11 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
         const bad = (c.label !== undefined && words(c.label, 'The name')) || (c.plural !== undefined && words(c.plural, 'The plural')) || (c.icon !== undefined && !ICON.test(c.icon) && 'Pick an icon from the list.') || (c.symbol && !SYMBOL.test(c.symbol) && SYMBOL_WRONG);
         if (bad) return bad;
         if (c.label && o.types.some((x) => x !== t && x.label.toLowerCase() === c.label!.toLowerCase())) return `There’s already a kind named ${c.label}.`;
+        if (c.floor === '') {
+          if (!t.floor) return `${t.label} is already the whole organisation’s.`;
+          if (t.parent && type(t.parent)?.floor) return `${named(t.parent)} is kept for a team’s floor: make it the organisation’s first.`;
+          delete t.floor;
+        }
         Object.assign(t, { ...(c.label ? { label: c.label } : {}), ...(c.plural ? { plural: c.plural } : {}), ...(c.icon ? { icon: c.icon } : {}) });
         if (c.symbol !== undefined) {
           if (c.symbol) t.symbol = c.symbol;
@@ -111,6 +122,9 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
             return 'The pattern isn’t a regular expression that can be read.';
           }
         }
+        if (d.floor && !TEAM_FLOOR.test(d.floor)) return 'A detail is kept wherever its kind shows, or for one team’s floor.';
+        if (d.floor && t.floor && d.floor !== t.floor) return `${t.label} is kept for another team’s floor, so its details are kept for that floor too.`;
+        if (d.floor && d.identity) return 'An identity key says which thing it is for everyone, so it can’t be kept for one team.';
         if (d.changes && !d.identity) return 'Only an identity key can pass from one thing to another.';
         if (d.changes && d.onEntity !== false) return 'A key that passes from one thing to another is known through facts, each with its dates, not typed on the entity.';
         if (d.identity && d.onEntity === false && !d.changes) return 'An identity key is typed on the entity itself, so it can’t be known only through facts, unless it passes from one thing to another over time.';
@@ -126,6 +140,11 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
         const bad = c.label !== undefined && words(c.label, 'The detail’s name');
         if (bad) return bad;
         if (c.hint !== undefined && c.hint.length > 200) return 'The hint is too long.';
+        if (c.floor === '') {
+          if (!d.floor) return `${d.label} is already kept wherever ${named(c.type)} shows.`;
+          if (type(c.type)?.floor) return `${named(c.type)} is kept for a team’s floor: make it the organisation’s first.`;
+          delete d.floor;
+        }
         Object.assign(d, { ...(c.label ? { label: c.label } : {}), ...(c.hint !== undefined ? { hint: c.hint } : {}) });
         break;
       }
@@ -232,6 +251,7 @@ const DETAIL_DEF = {
     onEntity: { type: 'boolean' },
     packIri: { type: 'string', maxLength: 500 },
     changes: { type: 'boolean' },
+    floor: FLOOR,
   },
   required: ['key', 'label', 'kind', 'identity'],
   additionalProperties: false,
@@ -246,6 +266,8 @@ const CHANGE = {
     plural: { type: 'string', maxLength: 80 },
     icon: { type: 'string', maxLength: 32 },
     symbol: { type: 'string', maxLength: 30 },
+    // Only an empty string: widening a team's kind or detail to the organisation.
+    floor: { type: 'string', maxLength: 0 },
     hint: { type: 'string', maxLength: 200 },
     inverse: { type: 'string', maxLength: 80 },
     from: KINDS,
@@ -266,6 +288,7 @@ const CHANGE = {
             pack: { type: 'string', maxLength: 48 },
             packTerm: { type: 'string', maxLength: 200 },
             packIri: { type: 'string', maxLength: 500 },
+            floor: FLOOR,
           },
           required: ['key', 'label', 'plural', 'abstract', 'icon', 'pack', 'packTerm'],
           additionalProperties: false,
@@ -375,8 +398,11 @@ export const studioRoutes = (app: FastifyInstance, atlas: Atlas) => {
   app.get('/ontology/versions', async () => ({ versions: await store.versions() }));
 
   /** The ontology as OWL in Turtle, saying which pack term each kind and link is. */
-  app.get('/ontology/owl', async (_req, reply) => {
-    const ontology = await store.ontology();
+  app.get('/ontology/owl', async (req, reply) => {
+    // Only what shows from where the caller stands: a team's kinds stay that team's.
+    const caller = atlas.onFloor(req, reply);
+    if (!caller) return reply;
+    const ontology = await atlas.ontologySeen(caller);
     reply.header('content-type', 'text/turtle; charset=utf-8').header('content-disposition', `attachment; filename="data-atlas-ontology-v${ontology.version}.ttl"`);
     return owlTurtle(ontology);
   });
@@ -387,6 +413,12 @@ export const studioRoutes = (app: FastifyInstance, atlas: Atlas) => {
     async (req, reply) => {
       const caller = admin(req, reply);
       if (!caller) return reply;
+      // A team's kinds and details are added by an admin standing on that team's floor (Harry, 5 November 2026).
+      const here = caller.workspace?.kind === 'team' ? teamFloor(caller.workspace.id) : undefined;
+      const placed = req.body.changes.flatMap((c) => (c.op === 'add-type' ? [c.type.floor] : c.op === 'add-detail' ? [c.detail.floor] : [])).filter(Boolean);
+      if (placed.some((f) => f !== here)) {
+        return reply.code(400).send({ error: 'bad-change', message: here ? 'A kind or detail can be kept only for the team floor you stand on.' : 'Stand on a team’s floor to keep a kind or detail for that team.' });
+      }
       const problem = checkChanges(await store.ontology(), req.body.changes);
       if (problem) return reply.code(400).send({ error: 'bad-change', message: problem });
       return change(caller, req.body.changes, req.body.note);

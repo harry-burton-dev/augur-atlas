@@ -430,6 +430,13 @@ export const migrations: { id: string; sql: string }[] = [
       -- Who held a value when: the check before each new fact of such a key.
       create index facts_held_value on atlas.facts (property, upper(value)) where superseded_at is null and value is not null;`,
   },
+  {
+    id: '016_team_terms',
+    sql: `
+      -- A kind or detail kept for one team's floor (tree:<team>), shown from that team down; null is the whole organisation's.
+      alter table atlas.ontology_types add column floor text;
+      alter table atlas.ontology_details add column floor text;`,
+  },
 ];
 
 /**
@@ -520,29 +527,29 @@ const applyChange = async (client: pg.PoolClient, c: OntologyChange) => {
     case 'add-type': {
       const t = c.type;
       await client.query(
-        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
-        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null, t.symbol || null],
+        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, floor, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
+        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null, t.symbol || null, t.floor ?? null],
       );
       return;
     }
     case 'edit-type':
       await client.query(
-        "update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon), symbol = case when $5::text is null then symbol else nullif($5, '') end where key = $1",
-        [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null, c.symbol ?? null],
+        "update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon), symbol = case when $5::text is null then symbol else nullif($5, '') end, floor = case when $6 then null else floor end where key = $1",
+        [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null, c.symbol ?? null, c.floor === ''],
       );
       return;
     case 'add-detail': {
       const d = c.detail;
       await client.query(
-        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
-        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null, d.changes === true],
+        `insert into atlas.ontology_details (type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, (select coalesce(max(sort), 0) + 1 from atlas.ontology_details where type = $1))`,
+        [c.type, d.key, d.label, d.kind, d.identity, d.pattern ?? null, d.hint ?? null, d.onEntity !== false, d.packIri ?? null, d.unit ?? null, d.values ?? null, d.changes === true, d.floor ?? null],
       );
       return;
     }
     case 'edit-detail':
-      await client.query('update atlas.ontology_details set label = coalesce($3, label), hint = coalesce($4, hint) where type = $1 and key = $2', [c.type, c.key, c.label ?? null, c.hint ?? null]);
+      await client.query('update atlas.ontology_details set label = coalesce($3, label), hint = coalesce($4, hint), floor = case when $5 then null else floor end where type = $1 and key = $2', [c.type, c.key, c.label ?? null, c.hint ?? null, c.floor === '']);
       return;
     case 'add-relation': {
       const r = c.relation;
@@ -862,11 +869,11 @@ export class PgAtlasStore {
   async ontology(): Promise<Ontology> {
     const [version, types, details] = await Promise.all([
       this.pool.query<{ version: number }>('select coalesce(max(version), 0) as version from atlas.ontology_versions'),
-      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null; symbol: string | null }>(
-        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol from atlas.ontology_types order by sort, key',
+      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null; symbol: string | null; floor: string | null }>(
+        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, floor from atlas.ontology_types order by sort, key',
       ),
-      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null; changes: boolean }>(
-        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes from atlas.ontology_details order by type, sort, key',
+      this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null; changes: boolean; floor: string | null }>(
+        'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices, changes, floor from atlas.ontology_details order by type, sort, key',
       ),
     ]);
     const relations = await this.pool.query<{ key: string; label: string; inverse: string; from_types: string[]; to_types: string[]; pack: string; pack_term: string; pack_iri: string | null }>(
@@ -886,6 +893,7 @@ export class PgAtlasStore {
           pack: t.pack,
           packTerm: t.pack_term,
           ...(t.pack_iri ? { packIri: t.pack_iri } : {}),
+          ...(t.floor ? { floor: t.floor } : {}),
           details: details.rows
             .filter((d) => d.type === t.key)
             .map((d) => ({
@@ -900,6 +908,7 @@ export class PgAtlasStore {
               ...(d.unit ? { unit: d.unit } : {}),
               ...(d.choices?.length ? { values: d.choices } : {}),
               ...(d.changes ? { changes: true } : {}),
+              ...(d.floor ? { floor: d.floor } : {}),
             })),
         }),
       ),
