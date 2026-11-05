@@ -1,4 +1,7 @@
 import { callerCheckFor, callerHeaders, callerSigner, signedCallerHeaders, type Caller, type CallerWorkspace } from '@augur/service-kit';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
@@ -273,5 +276,49 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
   it('reports healthy', async () => {
     const res = await app.inject({ method: 'GET', url: '/healthz' });
     expect(res.json()).toMatchObject({ status: 'ok', service: 'atlas', api: 'v1' });
+  });
+  describe('the map', () => {
+    it('places what has a point, through what it’s located at, and says what can’t be placed or seen', async () => {
+      const desk = on('sam', team('t-mar'));
+      const halden = (await call('POST', '/v1/entities', on('ana', ORG), { type: 'port', label: 'Halden quay', details: { location: '59.122,11.387' } })).json();
+      expect(halden.details.location).toBe('59.122, 11.387');
+      const vessel = (await call('POST', '/v1/entities', desk, { type: 'vessel', label: 'Skarv' })).json();
+      const words = (await call('POST', '/v1/entities', desk, { type: 'place', label: 'North bank', details: { location: 'By the old ferry' } })).json();
+      const secret = (await call('POST', '/v1/entities', on('sam', own('sam')), { type: 'place', label: 'Sam’s spot', details: { location: '60, 10' } })).json();
+      await store.addFact({ entity: vessel.id, property: 'located-at', target: halden.id, floor: 'tree:t-mar', workspace: 't-mar', backedBy: [], note: '', createdBy: 'sam' });
+      const res = await call('POST', '/v1/map/points', desk, { entities: [halden.id, vessel.id, words.id, secret.id] });
+      expect(res.statusCode).toBe(200);
+      const { points, unplaced, hidden } = res.json();
+      expect(points).toEqual(
+        expect.arrayContaining([
+          { entity: halden.id, label: 'Halden quay', type: 'port', lat: 59.122, lon: 11.387, detail: 'location' },
+          { entity: vessel.id, label: 'Skarv', type: 'vessel', lat: 59.122, lon: 11.387, detail: 'location', via: { entity: halden.id, label: 'Halden quay', relation: 'located-at' } },
+        ]),
+      );
+      expect([unplaced, hidden]).toEqual([1, 1]);
+      const outOfRange = await call('POST', '/v1/entities', desk, { type: 'place', label: 'Nowhere', details: { location: '95, 10' } });
+      expect(outOfRange.statusCode).toBe(400);
+    });
+
+    it('says when the deployment has no base map, and serves one a range at a time when it has', async () => {
+      const none = await call('GET', '/v1/map', on('sam', ORG));
+      expect(none.json()).toMatchObject({ tiles: false, attribution: '© OpenStreetMap contributors' });
+      expect(none.json().why).toMatch(/ATLAS_MAP_TILES/);
+      expect((await call('GET', '/v1/map/tiles', on('sam', ORG))).statusCode).toBe(404);
+      const dir = mkdtempSync(join(tmpdir(), 'atlas-map-'));
+      const file = join(dir, 'base.pmtiles');
+      writeFileSync(file, 'PMTiles-0123456789');
+      const withMap = await buildApp({ store, people, audit: async () => undefined, map: { tiles: file, attribution: 'Test data' } });
+      try {
+        expect((await withMap.inject({ method: 'GET', url: '/v1/map', headers: callerHeaders(on('sam', ORG)) })).json()).toEqual({ tiles: true, attribution: 'Test data' });
+        const part = await withMap.inject({ method: 'GET', url: '/v1/map/tiles', headers: { ...callerHeaders(on('sam', ORG)), range: 'bytes=0-6' } });
+        expect([part.statusCode, part.body, part.headers['content-range']]).toEqual([206, 'PMTiles', 'bytes 0-6/18']);
+        const past = await withMap.inject({ method: 'GET', url: '/v1/map/tiles', headers: { ...callerHeaders(on('sam', ORG)), range: 'bytes=50-60' } });
+        expect(past.statusCode).toBe(416);
+      } finally {
+        await withMap.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });

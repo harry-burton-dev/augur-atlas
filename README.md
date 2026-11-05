@@ -94,6 +94,18 @@ Everyone can read the ontology on its own page: the kinds, their details, the ki
 
 **Packs** are vocabularies to adopt terms from (Harry's Q5: a military ontology, pluggable). A profile of CCO comes with Data Atlas; an org loads its own as OWL in Turtle, read with [N3.js](https://github.com/rdfjs/N3.js): the full CCO, or MIP MIM where it has it (MIP's licence is the org's to check, so it doesn't ship here). A pack's classes become kinds to adopt, its object properties kinds of link and its datatype properties details. Adopting fills in what the pack says (the parent, a link's kinds when they're kept here) and asks for the rest. **Candidates** are the words proposals asked for, gathered by kind and name however many times they were asked; adopting one tells every proposal that asked. The whole ontology exports as OWL, so it can go back into Protégé or another tool.
 
+## The map
+
+Where things are (augur ADR 0071). A place detail written as a point, such as `57.70, 11.97`, puts its entity on the map. An entity without a point of its own is placed at a point it's known through facts (a position over time), or at the point of what it's linked to by a link that ends at kinds with places (a vessel located at a port).
+
+| Route | What it does |
+| --- | --- |
+| `GET /map` | Whether this deployment has a base map (`tiles`), the credit its data needs (`attribution`), and when it has none, `why` and who can add one |
+| `GET /map/tiles` | The base map: the deployment's PMTiles file, a byte range at a time (`Range`, answered 206) |
+| `POST /map/points` | `{ entities, at? }` (up to 500): the points of those seen from this floor, with `via` when a point is what it's linked to, and how many are `unplaced` (no point) or `hidden` (not seen from here) |
+
+The base map is one PMTiles file the deployment puts in the container and names with `ATLAS_MAP_TILES`. `ATLAS_MAP_ATTRIBUTION` is the credit for its data (default `© OpenStreetMap contributors`). Without a file, points are drawn on a plain background, saying so. Nothing on the map is fetched from outside the deployment.
+
 ## Explore
 
 `/explore/:id` draws the graph around one entity as seen from this floor, a ring at a time (one to three rings out). Each ring shows each entity's strongest links (those to the most linked entities) and folds the rest, and whatever lies past the last ring, into counts such as "+4 location of" that open in place; nothing loads the whole graph. An entity linked but not visible from here shows as "1 hidden" beside what it's linked to, with why. Kinds, links, "True on" and "Hide disputed" narrow it. Nodes are coloured by the floor they're kept on, as on the floor gauge. It is drawn with Sigma.js on graphology (WebGL), laid out by ForceAtlas2 in a Web Worker, and loaded only when the explorer opens; the same graph is always available as a list, which is also what browsers without WebGL get.

@@ -15,6 +15,9 @@ loadConfigOrExit(manifest.id, [
   commonSettings.gateway,
   // Optional: without it Triage matches by keys, names and spelling, and says matching by meaning is off.
   { ...commonSettings.models, required: false },
+  // Optional: the base map, a PMTiles file inside the container (augur ADR 0071). Without it, points go on a plain background.
+  { name: 'ATLAS_MAP_TILES', about: 'the path of the PMTiles file the map draws its base map from', required: false },
+  { name: 'ATLAS_MAP_ATTRIBUTION', about: 'the credit the base map’s data needs (default © OpenStreetMap contributors)', required: false },
 ]);
 
 // The graph lives in Postgres, in Data Atlas's own schema (docs/app-storage.md). There is no stand-in:
@@ -32,7 +35,9 @@ const embed =
 // The starter listens, gives the registry this version's frontend, puts Data Atlas in the catalogue and
 // stops cleanly on SIGTERM. It signs in as itself with SERVICE_CLIENT_SECRET (issued for it by an admin in
 // Admin, Apps, or by the app runner when it installs the app).
-const app = await startAppService({ manifest, buildApp: () => buildApp({ store, embed }) });
+const { ATLAS_MAP_TILES, ATLAS_MAP_ATTRIBUTION } = process.env;
+const map = { ...(ATLAS_MAP_TILES ? { tiles: ATLAS_MAP_TILES } : {}), ...(ATLAS_MAP_ATTRIBUTION ? { attribution: ATLAS_MAP_ATTRIBUTION } : {}) };
+const app = await startAppService({ manifest, buildApp: () => buildApp({ store, embed, map }) });
 
 // Tell other apps what happened (atlas.entity.*), from the outbox, once each change has committed.
 const { EVENTS_URL } = process.env;

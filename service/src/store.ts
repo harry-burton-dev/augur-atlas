@@ -393,22 +393,12 @@ export const migrations: { id: string; sql: string }[] = [
     id: '013_place_location',
     sql: `
       -- Places and facilities keep where they are (augur ADR 0071): a place detail, words or a point
-      -- ("57.70, 11.97"), which the map draws. Skipped where an admin already has a detail called location.
-      with added as (
-        insert into atlas.ontology_details (type, key, label, kind, identity, hint, sort, on_entity)
-        select t.key, 'location', 'Location', 'place', false, 'Latitude, longitude, such as 57.70, 11.97; or words', 50, true
-        from atlas.ontology_types t
-        where t.key in ('place', 'facility') and not exists (select 1 from atlas.ontology_details d where d.key = 'location')
-        returning type
-      ),
-      version as (
-        insert into atlas.ontology_versions (version, note, changed_by, changes)
-        select (select coalesce(max(version), 0) + 1 from atlas.ontology_versions), 'Places and facilities keep a location, for the map', null,
-          (select jsonb_agg(jsonb_build_object('op', 'add-detail', 'type', type, 'detail', jsonb_build_object('key', 'location', 'label', 'Location', 'kind', 'place', 'identity', false))) from added)
-        where exists (select 1 from added)
-        returning version
-      )
-      insert into atlas.outbox (topic, payload) select 'atlas.ontology.changed', jsonb_build_object('version', version) from version;`,
+      -- ("57.70, 11.97"), which the map draws. Part of the starter profile, like 004's details, so it is no
+      -- admin's version. Skipped where an admin already made a detail called location.
+      insert into atlas.ontology_details (type, key, label, kind, identity, hint, sort, on_entity)
+      select t.key, 'location', 'Location', 'place', false, 'Latitude, longitude, such as 57.70, 11.97; or words', 50, true
+      from atlas.ontology_types t
+      where t.key in ('place', 'facility') and not exists (select 1 from atlas.ontology_details d where d.key = 'location');`,
   },
 ];
 

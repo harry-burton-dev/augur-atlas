@@ -6,6 +6,7 @@ import { floorKindOf, floorPrincipal, unseen, viewFloors } from './floors.ts';
 import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } from './ontology.ts';
 import { peopleFromEnv, type People } from './people.ts';
 import { knowledgeRoutes, subgraph, type Atlas } from './knowledge.ts';
+import { mapRoutes, type MapOptions } from './map.ts';
 import { mergeRoutes } from './merges.ts';
 import { checkRoutes } from './shacl.ts';
 import { raiseRoutes } from './raises.ts';
@@ -27,6 +28,8 @@ export interface Options {
   audit?: Audit;
   /** Turns text into vectors through the model gateway, to match by meaning. Without it, Triage says matching by meaning is off. */
   embed?: Embed;
+  /** The deployment's base map file and its credit (ATLAS_MAP_TILES, ATLAS_MAP_ATTRIBUTION). */
+  map?: MapOptions;
 }
 
 export type { OnFloor };
@@ -45,7 +48,7 @@ const knownName = (name: string) => (name === UNNAMED_TEAM ? undefined : name);
 const REFS = { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 64 } }, required: ['id'] } } as const;
 const ID_PARAMS = { type: 'object', properties: { id: { type: 'string', maxLength: 64 } }, required: ['id'] } as const;
 
-export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit, embed }: Options) => {
+export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit, embed, map = {} }: Options) => {
   const app = Fastify(serviceFastifyOptions());
   const record = audit ?? auditFromEnv((entry) => app.log.info({ audit: entry }, 'audit (no audit log here)'));
   const recorded = (entry: Parameters<Audit>[0]) =>
@@ -367,6 +370,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
         return (await view(caller, [retired]))[0];
       });
       knowledgeRoutes(app, atlas);
+      mapRoutes(app, atlas, map);
       mergeRoutes(app, atlas);
       raiseRoutes(app, atlas);
       proposalRoutes(app, atlas);
