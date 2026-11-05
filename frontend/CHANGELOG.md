@@ -1,5 +1,11 @@
 # @apps/atlas-frontend
 
+## 0.4.0
+
+### Minor Changes
+
+- 0997959: Data Atlas can merge two entities found to be the same thing, keeping who decided it, why and the evidence for and against. Nothing moves, so a merge can be explained and undone exactly, and an undo marks what misled it as discredited.
+
 ## 0.3.0
 
 ### Minor Changes
