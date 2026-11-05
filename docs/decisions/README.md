@@ -5,3 +5,4 @@ docs/decisions/template.md). Anything that touches the platform or other apps is
 
 | Record | Decision | Status | Date |
 | --- | --- | --- | --- |
+| [0001](0001-a-merge-moves-nothing.md) | A merge places one entity under another and moves nothing | Proposed | 2026-11-05 |

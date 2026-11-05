@@ -6,6 +6,7 @@ import { floorPrincipal, unseen, viewFloors } from './floors.ts';
 import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } from './ontology.ts';
 import { peopleFromEnv, type People } from './people.ts';
 import { knowledgeRoutes, subgraph, type Atlas } from './knowledge.ts';
+import { mergeRoutes } from './merges.ts';
 import { proposalRoutes } from './proposals.ts';
 import { resolver, type Embed } from './resolve.ts';
 import { studioRoutes } from './studio.ts';
@@ -79,6 +80,7 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
   };
 
   const rightsOn = (caller: OnFloor, entity: Entity, floorName: string): EntityRights => {
+    if (entity.state === 'merged') return { edit: false, retire: false, why: 'It was found to be the same as another entity and placed under it: undo the merge to change it.' };
     if (entity.state !== 'active') return { edit: false, retire: false, why: 'It has been retired, so it can’t be changed.' };
     const here = floorPrincipal(caller.id, caller.workspace);
     if (entity.floor !== here) {
@@ -331,7 +333,7 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
               caller.id,
               ontology,
             );
-            if (!changed) return reply.code(409).send({ error: 'retired', message: 'It was retired while you were changing it.' });
+            if (!changed) return reply.code(409).send({ error: 'retired', message: 'It was retired or merged while you were changing it.' });
             void recorded({ actor: caller.id, action: 'entity.changed', target: entity.id, workspace: caller.workspace.id, detail: { fields: Object.keys(req.body) } });
             void atlas.resolver.catchUp(ontology);
             return (await view(caller, [changed]))[0];
@@ -349,11 +351,12 @@ export const buildApp = async ({ store, callers = callerCheckFromEnv('atlas'), p
         const can = rightsOn(caller, entity, (await nameFloors(caller, [entity.floor]))(entity.floor));
         if (!can.retire) return reply.code(403).send({ error: 'cannot-retire', message: can.why });
         const retired = await store.retireEntity(entity.id, caller.id);
-        if (!retired) return reply.code(409).send({ error: 'retired', message: 'It has already been retired.' });
+        if (!retired) return reply.code(409).send({ error: 'retired', message: entity.state === 'merged' ? 'It is merged into another entity: undo the merge first.' : 'It has already been retired.' });
         void recorded({ actor: caller.id, action: 'entity.retired', target: entity.id, workspace: caller.workspace.id, detail: { type: entity.type, label: entity.label } });
         return (await view(caller, [retired]))[0];
       });
       knowledgeRoutes(app, atlas);
+      mergeRoutes(app, atlas);
       proposalRoutes(app, atlas);
       studioRoutes(app, atlas);
     },
