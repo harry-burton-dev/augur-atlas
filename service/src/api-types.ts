@@ -458,6 +458,8 @@ export interface MentionedIn {
 /** `GET /entities/:id/used-by`: intents bound to it (ids, named by Mandate) and documents what's known came from. */
 export interface EntityUses {
   intents: { app: string; id: string; role: string; since: string; floorName?: string }[];
+  /** Records in another app linked to it: a library, folder or document, by its level of the shape (a file is a document). */
+  records: { app: string; id: string; level: string; role: string; since: string; floorName?: string }[];
   documents: MentionedIn[];
 }
 

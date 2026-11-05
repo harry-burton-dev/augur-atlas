@@ -3,11 +3,12 @@ import type { PgAtlasStore } from './store.ts';
 
 /**
  * What Data Atlas follows of other apps (spec, "Shared entity reference", AT8):
- * Mandate's bindings, for each entity's "used by", and Artifacts' withdrawals,
- * which retract what was read from a document. Theirs stays the truth: this
+ * Mandate's and Artifacts' entity bindings (ADR 0025), for each entity's
+ * "used by", and Artifacts' withdrawals, which retract what was read from a
+ * document. Theirs stays the truth: this
  * only keeps an index and marks evidence, and never deletes an entity.
  */
-export const FOLLOWED = ['mandate.intent.entity-bound', 'mandate.intent.entity-unbound', 'folio.document.withdrawn', 'folio.document.deleted'];
+export const FOLLOWED = ['mandate.intent.entity-bound', 'mandate.intent.entity-unbound', 'folio.record.entity-bound', 'folio.record.entity-unbound', 'folio.document.withdrawn', 'folio.document.deleted'];
 
 const text = (x: unknown) => (typeof x === 'string' && x ? x : undefined);
 
@@ -23,6 +24,18 @@ export const follower = (store: PgAtlasStore) => async (event: Pick<DomainEvent,
       const role = text(p.role);
       if (event.topic === 'mandate.intent.entity-bound') await store.bind({ app: 'mandate', kind: 'intent', id: intent, entity, role: role ?? 'related', workspace: event.workspace?.id ?? '' });
       else await store.unbind({ app: 'mandate', kind: 'intent', id: intent, entity, ...(role ? { role } : {}) });
+      return;
+    }
+    case 'folio.record.entity-bound':
+    case 'folio.record.entity-unbound': {
+      // A library, folder or document, as Artifacts names it in a link (`<library>/<record>`), kept by its level.
+      const record = text(p.record);
+      const entity = text(p.entity);
+      const level = text(p.level);
+      if (!record || !entity || !level) return;
+      const role = text(p.role);
+      if (event.topic === 'folio.record.entity-bound') await store.bind({ app: 'folio', kind: level, id: record, entity, role: role ?? 'about', workspace: event.workspace?.id ?? '' });
+      else await store.unbind({ app: 'folio', kind: level, id: record, entity, ...(role ? { role } : {}) });
       return;
     }
     case 'folio.document.withdrawn':

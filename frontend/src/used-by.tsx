@@ -1,24 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { DocumentRef } from '@augur/mfe-sdk';
+import type { DocumentRef, UnitLevel, UnitRef } from '@augur/mfe-sdk';
 import { Heading, List, relativeTime, type ListItem } from '@augur/app-kit';
 import type { AtlasApi, IntentName, UsedBy as Used } from './api.js';
 
 const ROLE: Record<string, string> = { subject: 'its subject', resource: 'a resource', area: 'its area', related: 'related' };
+/** What a linked record is, by its level of the shape: the collection is a library, a file is a document. */
+const LEVEL: Record<string, { word: string; icon: ListItem['icon'] }> = { collection: { word: 'A library', icon: 'library' }, file: { word: 'A document', icon: 'document' } };
+const FOLDER: { word: string; icon: ListItem['icon'] } = { word: 'A folder', icon: 'folder' };
 
 export interface UsedByProps {
   api: AtlasApi;
   entity: string;
   onOpenIntent?: (id: string) => void;
   onOpenDocument?: (ref: DocumentRef) => void;
+  /** Opens a linked record in the app that keeps it, which says whether the person may see it. */
+  onOpenUnit?: (ref: UnitRef) => void;
 }
 
 /**
  * What uses an entity: intents bound to it in Mandate, named by Mandate as the
  * person (one they can't open still shows, saying where it's kept), and the
- * documents what's known of it came from. Nothing is hidden for being out of
- * reach: it says why.
+ * libraries, folders and documents linked to it, and the documents what's
+ * known of it came from. Nothing is hidden for being out of reach: it says why.
+ * Linked records come as ids, never titles: opening one asks the app that
+ * keeps it, which shows it or says it isn't shared with them.
  */
-export function UsedBy({ api, entity, onOpenIntent, onOpenDocument }: UsedByProps) {
+export function UsedBy({ api, entity, onOpenIntent, onOpenDocument, onOpenUnit }: UsedByProps) {
   const [used, setUsed] = useState<Used>();
   const [names, setNames] = useState<Map<string, IntentName>>(new Map());
   /** Why the intents couldn't be named, when Mandate couldn't be asked. */
@@ -57,6 +64,15 @@ export function UsedBy({ api, entity, onOpenIntent, onOpenDocument }: UsedByProp
       ...(open ? {} : { disabled: true }),
     };
   });
+  const records: ListItem[] = (used?.records ?? []).map((r) => {
+    const what = LEVEL[r.level] ?? FOLDER;
+    return {
+      id: `${r.app}:${r.id}`,
+      title: what.word,
+      detail: [`Linked as ${r.role}`, r.floorName ? `kept on ${r.floorName}` : '', `linked ${relativeTime(r.since)}`].filter(Boolean).join(' · '),
+      icon: what.icon,
+    };
+  });
   const documents: ListItem[] = (used?.documents ?? []).map((d) => ({
     id: `${d.app}:${d.id}`,
     title: d.title,
@@ -66,7 +82,7 @@ export function UsedBy({ api, entity, onOpenIntent, onOpenDocument }: UsedByProp
   }));
   return (
     <section className="atlas-section">
-      <Heading size="s" level={2} heading="Used by" summary="Intents bound to it, and documents what’s known of it came from. Each app decides what you can open." />
+      <Heading size="s" level={2} heading="Used by" summary="Intents bound to it, what’s linked to it, and documents what’s known of it came from. Each app decides what you can open." />
       {unnamed ? (
         <p className="atlas-note">
           {used?.intents.length === 1 ? 'One intent uses' : `${used?.intents.length} intents use`} it. {unnamed}
@@ -83,6 +99,19 @@ export function UsedBy({ api, entity, onOpenIntent, onOpenDocument }: UsedByProp
         onOpen={(item) => names.get(item.id)?.canOpen && onOpenIntent?.(item.id)}
         onRetry={() => void load()}
         className="atlas-used-intents"
+      />
+      <List
+        label="Linked from"
+        density="compact"
+        noun={['record', 'records']}
+        items={records}
+        loading={!used && !failure}
+        empty="Nothing is linked to it. A library, folder or document can be linked to it as what it’s about."
+        onOpen={(item) => {
+          const r = used?.records.find((x) => `${x.app}:${x.id}` === item.id);
+          if (r) onOpenUnit?.({ kind: 'unit', app: r.app, id: r.id, level: r.level as UnitLevel, name: item.title });
+        }}
+        className="atlas-used-records"
       />
       <List
         label="Mentioned in"
