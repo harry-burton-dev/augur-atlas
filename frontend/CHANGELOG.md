@@ -1,5 +1,11 @@
 # @apps/atlas-frontend
 
+## 0.2.3
+
+### Patch Changes
+
+- 5d28a57: The wire types between the frontend and the service are written once, in the service's src/api-types.ts, and both sides use them. Types only: the frontend bundle and the service build don't change.
+
 ## 0.2.2
 
 ### Patch Changes
