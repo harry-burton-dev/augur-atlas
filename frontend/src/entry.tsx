@@ -1,23 +1,12 @@
-import { ENTITY_EXPLAIN, ENTITY_OPEN, ENTITY_PICK, ENTITY_PROPOSE, defineMicroFrontend, isEntityRef, openDocument, openUnit, pickDocument, type EntityPick, type EntityProposal, type Intent, type MountContext } from '@augur/mfe-sdk';
-import { createRoot, type Root } from 'react-dom/client';
-import { AtlasApi, pathFor, placeFor, type Place } from './api.js';
-import { AtlasApp } from './app.js';
+import { useEffect, useMemo } from 'react';
+import { defineReactApp, type PickerProps } from '@augur/app-kit';
+import { ENTITY_EXPLAIN, ENTITY_OPEN, ENTITY_PICK, ENTITY_PROPOSE, isEntityRef, type EntityPick, type EntityProposal, type Intent, type MountContext } from '@augur/mfe-sdk';
+import manifest from '../../manifest.json';
+import { pathFor, type Place } from './api.js';
+import { App, apiFor, places } from './app.js';
 import { Picker } from './picker.js';
 import { Propose } from './propose.js';
 import styles from './styles.css?inline';
-
-/** Mandate's intent for opening an intent (docs/mandate.md). */
-const AIM_OPEN = 'aim.open';
-
-/**
- * Where Data Atlas is in the address bar, so a place in it can be shared, and
- * Back goes to the last one: the shell mounts it again with that path.
- */
-export const addressFor = (pathname: string, mountedAt: string, place: Place) => {
-  const inner = mountedAt === '/' ? '' : mountedAt;
-  if (!pathname.endsWith(inner)) return undefined;
-  return `${pathname.slice(0, pathname.length - inner.length)}${pathFor(place)}`;
-};
 
 /** Where an intent asks Data Atlas to start: `entity.open` at the entity, `entity.explain` at it with why it shows marked. */
 export const placeForIntent = (intent: Intent | undefined): Place | undefined => {
@@ -34,88 +23,58 @@ export const proposalOffer = (intent: Intent | undefined): EntityProposal | unde
   return p as EntityProposal;
 };
 
-const apiFor = (ctx: MountContext) => new AtlasApi((path, init) => ctx.fetch(path, init));
+/** Says no to a request Data Atlas can't read, before drawing anything. */
+function Refuse({ cancel }: { cancel: () => void }) {
+  useEffect(() => cancel(), [cancel]);
+  return null;
+}
 
-const roots = new WeakMap<HTMLElement, Root>();
-const STYLE_ID = 'augur-atlas-styles';
-
-/** A React root in `el`, with Data Atlas's stylesheet on the page once. */
-const rootIn = (el: HTMLElement) => {
-  if (!document.getElementById(STYLE_ID)) {
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = styles;
-    document.head.append(style);
+/**
+ * What another app asks of Data Atlas: entities picked (`entity.pick`), opening over it as a picker,
+ * or words that name a thing filed in Triage (`entity.propose`).
+ */
+function Requests({ ctx, intent, respond, cancel }: PickerProps<MountContext>) {
+  const api = useMemo(() => apiFor(ctx), [ctx]);
+  if (intent.type === ENTITY_PICK) {
+    const pick = (intent.payload ?? {}) as EntityPick;
+    const multiple = pick.multiple === true;
+    return (
+      <div className="atlas-over">
+        <Picker
+          api={api}
+          purpose={typeof pick.purpose === 'string' ? pick.purpose : ''}
+          types={Array.isArray(pick.types) ? pick.types.filter((t) => typeof t === 'string') : []}
+          multiple={multiple}
+          floorName={ctx.workspace.name}
+          onPicked={(entities) => respond(multiple ? entities : entities[0])}
+          onCancel={cancel}
+        />
+      </div>
+    );
   }
-  const root = createRoot(el);
-  roots.set(el, root);
-  return root;
+  const offer = proposalOffer(intent as Intent);
+  if (!offer) return <Refuse cancel={cancel} />;
+  return (
+    <div className="atlas-over">
+      <Propose api={api} offer={offer} floorName={ctx.workspace.name} onProposed={respond} onCancel={cancel} />
+    </div>
+  );
+}
+
+const startAt = (payload: unknown, type: string) => {
+  const at = placeForIntent({ type, payload });
+  return at ? pathFor(at) : undefined;
 };
 
-/** Data Atlas: the things the organisation knows about. What the shell mounts at /atlas. */
-export default defineMicroFrontend({
-  mount(el: HTMLElement, ctx: MountContext) {
-    // Another app offered words that name a thing, and the offer can't be read: say no before drawing anything.
-    if (ctx.intent?.type === ENTITY_PROPOSE && ctx.reply && !proposalOffer(ctx.intent)) {
-      ctx.reply.cancel();
-      return;
-    }
-    const root = rootIn(el);
-    // Another app asked for entities: Data Atlas opens over it as a picker, and answers with what's chosen.
-    if (ctx.intent?.type === ENTITY_PICK && ctx.reply) {
-      const reply = ctx.reply;
-      const pick = (ctx.intent.payload ?? {}) as EntityPick;
-      const multiple = pick.multiple === true;
-      root.render(
-        <div className="atlas-over">
-          <Picker
-            api={apiFor(ctx)}
-            purpose={typeof pick.purpose === 'string' ? pick.purpose : ''}
-            types={Array.isArray(pick.types) ? pick.types.filter((t) => typeof t === 'string') : []}
-            multiple={multiple}
-            floorName={ctx.workspace.name}
-            onPicked={(entities) => reply.respond(multiple ? entities : entities[0])}
-            onCancel={() => reply.cancel()}
-          />
-        </div>,
-      );
-      return;
-    }
-    // Another app offered words that name a thing: Data Atlas asks what kind, and files it in Triage.
-    const offer = proposalOffer(ctx.intent);
-    if (offer && ctx.reply) {
-      const reply = ctx.reply;
-      root.render(
-        <div className="atlas-over">
-          <Propose api={apiFor(ctx)} offer={offer} floorName={ctx.workspace.name} onProposed={(receipt) => reply.respond(receipt)} onCancel={() => reply.cancel()} />
-        </div>,
-      );
-      return;
-    }
-    let mountedAt = ctx.path;
-    const moved = (place: Place) => {
-      const to = addressFor(window.location.pathname, mountedAt, place);
-      if (!to || to === window.location.pathname) return;
-      window.history.pushState(window.history.state, '', to);
-      mountedAt = pathFor(place);
-    };
-    root.render(
-      <AtlasApp
-        api={apiFor(ctx)}
-        floorName={ctx.workspace.name}
-        floorKind={ctx.workspace.kind}
-        place={placeForIntent(ctx.intent) ?? placeFor(ctx.path)}
-        userId={ctx.user.id}
-        pickDocument={() => pickDocument(ctx, { purpose: 'Where it was read' })}
-        openDocument={(ref) => void openDocument(ctx, ref)}
-        openUnit={(ref) => void openUnit(ctx, ref)}
-        openIntent={(id) => void ctx.raise({ type: AIM_OPEN, payload: { id } })}
-        onPlace={moved}
-      />,
-    );
+/** Data Atlas: the things the organisation knows about. What the shell mounts at its route. */
+export default defineReactApp<MountContext>({
+  name: manifest.name,
+  App,
+  routes: places,
+  intents: {
+    [ENTITY_OPEN]: (payload) => startAt(payload, ENTITY_OPEN),
+    [ENTITY_EXPLAIN]: (payload) => startAt(payload, ENTITY_EXPLAIN),
   },
-  unmount(el: HTMLElement) {
-    roots.get(el)?.unmount();
-    roots.delete(el);
-  },
+  Picker: Requests,
+  styles,
 });
