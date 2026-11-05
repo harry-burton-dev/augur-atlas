@@ -1,5 +1,30 @@
 # @apps/atlas-frontend
 
+## 0.5.0
+
+### Minor Changes
+
+- 74da8e7: Data Atlas's frontend now runs on the app starters: `defineReactApp` mounts it, its places are `placeRoutes` (so the address bar follows the page and `entity.explain` opens with `?explain=true`), and it talks to its service through `createAppClient`, reading AUGUR's problem bodies as `AppError`. Needs app kit 0.8.
+- fe4e347: The explorer can explore within an intent (PER-327). **Within an intent…** asks Mandate for an intent, then starts the walk from what it binds, as well as the centre, and dims everything else. It says what of the intent can't be shown, and why. When Mandate can't be asked on this floor, the button stays visible and says why.
+- 57baa8b: Data Atlas follows the entity bindings of every app the registry lists (SDK 2.1, ADR 0066) instead of only Mandate's and Artifacts', each app and type from its own place (migration `014_binding_cursors`). An entity's **Used by** shows what any other app binds to it. This needs AUGUR with SDK 2.1 and Mandate and Artifacts releases that declare their bindings: until both are installed, "used by" stops updating.
+- 4e67992: An identity key can change hands over time, as a vessel's MMSI does. In the studio, a new detail of text or a number can say which thing it is: always the same thing, or whoever holds it at the time. A key that changes hands is known through facts with dates. Only one entity holds a value at any time: a fact that would overlap another entity's holding is refused, naming who holds it and when. Searching by the key finds whoever holds it now. Migration `015_changing_keys`.
+- 357f818: A detail known through facts can hold several values at once, such as a person's languages. Each value is its own fact, and accepting one doesn't replace the others. In the studio, a new detail says where it's **known**: typed on the entity, or through facts with one value or several at a time. Migration `017_many_details`.
+- 8e87162: The map view (augur ADR 0071). An entity whose kind can be placed has **Where it is** on its page, and the explorer offers **Show on a map** for what's around. MapLibre GL JS and PMTiles draw it from the deployment's own base map, loaded only when a map first opens. Without a base map the points go on a plain background, saying why, and the points are always listed below the map for keyboards, screen readers and browsers without WebGL.
+- 5d6ad1f: "Might be the same" on the entity page: up to five entities of its kind that may be the same real thing, found as Triage finds them (identity key, name, spelling, meaning), each saying why (`GET /v1/entities/:id/alike`). Whoever may decide what the entity is (its floor's leads, or whoever added it) can merge it into one from there, saying why; when they can't, the button stays and says why. Part of PER-326.
+- b60a35e: A kind can carry a military symbol code (APP-6 or MIL-STD-2525, ADR 0070). Admins set it in the studio with **Change…**, which says before saving when a code can't be drawn. The symbol shows on the kind's row and on each of its entities' pages, drawn by milsymbol, which is only downloaded when a symbol is on screen. Kinds without a code keep their icon.
+- c31f7ca: Details can hold more (PER-328). A **quantity** is a number in a unit, such as a gross tonnage in t. A **choice** is one of a few values, such as a vessel's status. A **place** is written as words for now. The studio asks a quantity for its unit and a choice for its values, and the entity form offers a choice's values to pick from. Quantities show with their unit.
+- b3d644f: Raising an entity card to a floor above (PER-326). A lead asks a floor above to keep an entity made on their floor ("Floors above" on the entity page). The request waits in that floor's Triage, "Asked to keep here", where its leads keep it, say it's one they already have (the two are merged there), or decline with a note that whoever asked sees. Only the card moves; what's known of it stays on the floors it was recorded on. Migration `010_raises` adds `atlas.raises`.
+- 887181c: Data Atlas names the organisation's floor by the organisation's name, as Admin sets it (identity's `GET /v1/organisation`), instead of "Org", and your own floor as "Your own floor" instead of "You". Entities and explorer nodes carry `floorKind` (`org`, `own`, `personal`, `team`), and the words, rights and colours that depend on a floor follow its kind, never its name. When identity can't be asked, the floor is called "The organisation". Part of PER-325.
+- 342baca: Data Atlas checks what it keeps against SHACL shapes written from its ontology (ADR 0062). The studio has a Checks tab that checks the entities in sight a page at a time and saves the shapes as Turtle, and an entity that doesn't fit says so on its page, in the same words the checks on writing use.
+- 281ab14: Kinds and details can be kept for one team's floor. In the studio, an admin standing on a team's floor chooses **Kept for**: the whole organisation, or that team and the teams under it. A team's kind shows only from that team down, and nobody records one where it doesn't show. **Make it the organisation's** widens it, the only way it changes floor. Migration `016_team_terms`.
+- c197322: In Triage, a lead can say that two of a mention's matches are the same thing (PER-326). **These two are the same…** asks which one stays, and why, then places the other under it. The mention then offers the one that stays, once. The merge can be undone from either entity's page.
+
+### Patch Changes
+
+- fe4e347: What Data Atlas knows "now" is read by the database's clock, the same one that stamps when a fact was recorded or withdrawn. A fact withdrawn a moment ago no longer shows as current for that moment.
+- f4ad34e: A `run/` module for AUGUR's run suite: RUN-20 looks up each entity the seed puts on the organisation's floor by its name and other names, opens it, and checks it says what uses it.
+- 69a1abc: Data Atlas builds against SDK 2.0 and service kit 0.14 (PER-292). Nothing changes for people; the manifest still opens on a 1.11 shell or a 2.0 one.
+
 ## 0.4.0
 
 ### Minor Changes
