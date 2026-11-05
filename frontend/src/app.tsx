@@ -10,6 +10,7 @@ import {
   type AppProps,
   Details,
   Dialog,
+  Heading,
   List,
   PageHead,
   RailLink,
@@ -29,6 +30,7 @@ import manifest from '../../manifest.json';
 import { AtlasApi, detailText, entityLine, isPickedIntent, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type PickedIntent, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
+import { AtlasMap, canBePlaced } from './map.js';
 import { DoesntFit } from './checks.js';
 import { KindSymbol } from './symbol.js';
 import { MightBeTheSame } from './alike.js';
@@ -320,6 +322,12 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
           limit={explain ? 0 : 8}
         />
         <Knowledge api={api} entity={e} ontology={ontology} pickDocument={pickDocument} onOpenEntity={(id) => move({ page: 'entity', id })} />
+        {e.state === 'active' && canBePlaced(ontology, e.type) ? (
+          <section className="atlas-section atlas-where">
+            <Heading size="s" level={2} heading="Where it is" summary="Its own point, a position known on this floor, or the point of where it’s located." />
+            <AtlasMap key={`map:${e.id}`} api={api} entities={[e.id]} about={e.label} onOpenEntity={(id) => move({ page: 'entity', id })} />
+          </section>
+        ) : null}
         <UsedBy api={api} entity={e.id} onOpenIntent={openIntent} onOpenDocument={openDocument} onOpenUnit={openUnit} />
         {e.state === 'active' ? <DoesntFit key={`fit:${e.id}`} api={api} entity={e} /> : null}
         {e.state === 'active' ? <RaiseCard key={`raise:${e.id}`} api={api} entity={e} /> : null}

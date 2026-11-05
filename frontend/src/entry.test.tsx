@@ -448,6 +448,29 @@ describe('explorer', () => {
     expect(el.querySelector('.atlas-why')!.textContent).toMatch(/Finance floor/);
   });
 
+  it('shows what’s around on a map, listing the points where it can’t be drawn, and says why there’s no base map', async () => {
+    const asked: unknown[] = [];
+    const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
+      if (path.startsWith('/api/atlas/v1/subgraph')) return Response.json(AROUND_TERN);
+      if (path === '/api/atlas/v1/map') return Response.json({ tiles: false, attribution: '© OpenStreetMap contributors', why: 'This deployment has no base map, so points are drawn on a plain background.' });
+      if (path.startsWith('/api/atlas/v1/map/points')) {
+        asked.push(await bodyOf(init));
+        return Response.json({ points: [{ entity: 'ent_01', label: 'Northern Tern', type: 'vessel', lat: 59.122, lon: 11.387, detail: 'location', via: { entity: 'ent_05', label: 'Halden quay', relation: 'located-at' } }], unplaced: 1, hidden: 0 });
+      }
+      return new Response(null, { status: 404 });
+    });
+    const el = await open(ctx(fetch, '/explore/ent_01'));
+    await press(button('Show on a map', el));
+    expect((asked[0] as { entities: string[] }).entities).toContain('ent_01');
+    expect(el.textContent).toMatch(/no base map/);
+    expect(el.textContent).toMatch(/can’t draw the map \(it needs WebGL\), so its points are listed/);
+    expect(el.querySelector('.atlas-map-list')!.textContent).toContain('Northern TernAt Halden quay');
+    expect(el.textContent).toMatch(/Not on the map: 1 with no point to show/);
+    await press(button('Back to the links', el));
+    expect(el.querySelector('.atlas-map-list')).toBeNull();
+  });
+
   it('dims what lies outside an intent’s lens, keeping the centre and what it binds', () => {
     const open = widen(undefined, AROUND_TERN, 'ent_01');
     const look = { you: 'g', team: 'amber', org: 'blue', ink: 'i', muted: 'm', line: 'l', disputed: 'w', ground: 'd' };

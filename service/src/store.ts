@@ -405,6 +405,17 @@ export const migrations: { id: string; sql: string }[] = [
       alter table atlas.ontology_types add column symbol text;`,
   },
   {
+    id: '013_place_location',
+    sql: `
+      -- Places and facilities keep where they are (augur ADR 0071): a place detail, words or a point
+      -- ("57.70, 11.97"), which the map draws. Part of the starter profile, like 004's details, so it is no
+      -- admin's version. Skipped where an admin already made a detail called location.
+      insert into atlas.ontology_details (type, key, label, kind, identity, hint, sort, on_entity)
+      select t.key, 'location', 'Location', 'place', false, 'Latitude, longitude, such as 57.70, 11.97; or words', 50, true
+      from atlas.ontology_types t
+      where t.key in ('place', 'facility') and not exists (select 1 from atlas.ontology_details d where d.key = 'location');`,
+  },
+  {
     id: '014_binding_cursors',
     sql: `
       -- Where Data Atlas has read each app's bindings up to (ADR 0066), one cursor per app and type,

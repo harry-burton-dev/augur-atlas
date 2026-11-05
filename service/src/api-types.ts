@@ -13,9 +13,9 @@
 
 /**
  * What a detail holds: words, a number, a date, a quantity (a number in the
- * detail's `unit`), one of a few `values` (a choice), or a place (written as
- * words for now; coordinates come with the map). Links to other entities are
- * relations, not details.
+ * detail's `unit`), one of a few `values` (a choice), or a place (words, or a
+ * point the map can draw: latitude, longitude in decimal degrees, "57.70, 11.97").
+ * Links to other entities are relations, not details.
  */
 export type DetailKind = 'text' | 'number' | 'date' | 'quantity' | 'choice' | 'place';
 
@@ -883,4 +883,45 @@ export interface FloorCheck {
   offset: number;
   total: number;
   findings: CheckFinding[];
+}
+
+// ---- the map (augur ADR 0071) ----
+
+/** `GET /map`: whether this deployment has a base map, and the credit its data needs. */
+export interface MapInfo {
+  /** Whether `GET /map/tiles` serves a base map (a PMTiles file). */
+  tiles: boolean;
+  /** The base map data's credit, shown on the map. */
+  attribution: string;
+  /** When there's no base map, why, and who can add one. */
+  why?: string;
+}
+
+/** `POST /map/points` body: the entities to place, as seen from the caller's floor, and when. */
+export interface MapPointsQuery {
+  entities: string[];
+  /** Where things were at this time (valid time); now when absent. */
+  at?: string;
+}
+
+/** An entity on the map: at its own point, or at the point of what it's linked to (`via`), such as the port it's located at. */
+export interface MapPoint {
+  entity: string;
+  label: string;
+  type: string;
+  lat: number;
+  lon: number;
+  /** The detail the point comes from. */
+  detail: string;
+  /** When the point is another entity's: which, and the link to it. */
+  via?: { entity: string; label: string; relation: string };
+}
+
+/** `POST /map/points`: the entities that have a point, and how many of those asked for have none or can't be seen from here. */
+export interface MapPoints {
+  points: MapPoint[];
+  /** Asked for and seen, but with no point to put on the map. */
+  unplaced: number;
+  /** Asked for but not seen from here. */
+  hidden: number;
 }
