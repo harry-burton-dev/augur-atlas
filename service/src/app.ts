@@ -162,7 +162,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
 
   await app.register(
     async (app) => {
-      app.get('/ontology', async (req, reply) => {
+      app.get('/ontology', async (req) => {
         signedIn(req);
         return store.ontology();
       });
