@@ -4,10 +4,10 @@ import { ulid } from 'ulid';
 import { detailsOf, knowledgeSql, starterSql, type DetailDef, type Ontology, type OntologyChange, type RelationDef, type TypeDef } from './ontology.ts';
 import { BUILT_IN_PACKS, type Pack } from './packs.ts';
 import type * as Wire from './api-types.ts';
-import type { Dispute, Entity, EntityMerge, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
+import type { Dispute, Entity, EntityMerge, Fact, Raise, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
 /** What crosses the wire as it is kept is written once, in api-types.ts. */
-export type { Dispute, Entity, EntityMerge, Fact, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
+export type { Dispute, Entity, EntityMerge, Fact, Raise, Match, Matching, Mention, MentionedIn, Observation, OntologyVersion, PackSummary, Producer, Proposal, ProposalSummary, ProposedObservation, ProposedTerm, Source } from './api-types.ts';
 
 export interface NewEntity {
   type: string;
@@ -355,6 +355,30 @@ export const migrations: { id: string; sql: string }[] = [
       alter table atlas.observations add column discredited_at timestamptz, add column discredited_by text, add column discredited_why text,
         add column discredited_in text references atlas.merges(id);`,
   },
+  {
+    id: '010_raises',
+    sql: `
+      -- A request to keep an entity card on a floor above (PER-326). The floor above's leads keep it, decline it
+      -- with a note, or find it's one they already have and merge it in. What's known of it stays on its floors.
+      create table atlas.raises (
+        id text primary key,
+        entity text not null references atlas.entities(id),
+        from_floor text not null,
+        to_floor text not null,
+        note text not null default '',
+        state text not null default 'waiting' check (state in ('waiting', 'kept', 'declined', 'merged', 'withdrawn')),
+        asked_by text not null,
+        asked_in text not null,
+        asked_at timestamptz not null default clock_timestamp(),
+        decided_by text,
+        decided_at timestamptz,
+        answer text not null default '',
+        merged_into text references atlas.entities(id),
+        check (from_floor <> to_floor)
+      );
+      create unique index raises_waiting on atlas.raises (entity) where state = 'waiting';
+      create index raises_to on atlas.raises (to_floor, state, asked_at desc);`,
+  },
 ];
 
 /**
@@ -582,6 +606,44 @@ const fromMergeRow = (r: MergeRow): EntityMerge => ({
 });
 
 /** A merge that can't be made or undone as asked, said in words. */
+/** Why a raise can't go ahead, as a code the routes answer with. */
+export class RaiseError extends Error {
+  readonly code: 'waiting' | 'not-waiting' | 'not-active';
+  constructor(code: RaiseError['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+interface RaiseRow {
+  id: string;
+  entity: string;
+  from_floor: string;
+  to_floor: string;
+  note: string;
+  state: Raise['state'];
+  asked_by: string;
+  asked_at: Date;
+  decided_by: string | null;
+  decided_at: Date | null;
+  answer: string;
+  merged_into: string | null;
+}
+const RAISE_COLUMNS = 'id, entity, from_floor, to_floor, note, state, asked_by, asked_at, decided_by, decided_at, answer, merged_into';
+const fromRaiseRow = (r: RaiseRow): Raise => ({
+  id: r.id,
+  entity: r.entity,
+  from: r.from_floor,
+  to: r.to_floor,
+  note: r.note,
+  state: r.state,
+  askedBy: r.asked_by,
+  askedAt: r.asked_at.toISOString(),
+  ...(r.decided_by ? { decidedBy: r.decided_by, decidedAt: r.decided_at!.toISOString() } : {}),
+  ...(r.answer ? { answer: r.answer } : {}),
+  ...(r.merged_into ? { mergedInto: r.merged_into } : {}),
+});
+
 export class MergeError extends Error {
   readonly code: 'not-active' | 'already-merged' | 'bad-cite' | 'not-standing' | 'not-cited';
   constructor(code: MergeError['code'], message: string) {
@@ -1082,6 +1144,67 @@ export class PgAtlasStore {
   async mergesOf(entity: string): Promise<EntityMerge[]> {
     const { rows } = await this.pool.query<MergeRow>(`${MERGE_SELECT} where m.junior = $1 or m.senior = $1 order by m.decided_at desc, m.id desc`, [entity]);
     return rows.map(fromMergeRow);
+  }
+
+  /** Asks for an entity card to be kept on a floor above. One request waits at a time. */
+  async askRaise(r: { entity: string; from: string; to: string; note: string; by: string; workspace: string }): Promise<Raise> {
+    try {
+      const { rows } = await this.pool.query<RaiseRow>(
+        `insert into atlas.raises (id, entity, from_floor, to_floor, note, asked_by, asked_in) values ($1, $2, $3, $4, $5, $6, $7) returning ${RAISE_COLUMNS}`,
+        [`rse_${ulid()}`, r.entity, r.from, r.to, r.note, r.by, r.workspace],
+      );
+      return fromRaiseRow(rows[0]);
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') throw new RaiseError('waiting', 'A request to raise it is already waiting.');
+      throw err;
+    }
+  }
+
+  async raise(id: string): Promise<Raise | undefined> {
+    const { rows } = await this.pool.query<RaiseRow>(`select ${RAISE_COLUMNS} from atlas.raises where id = $1`, [id]);
+    return rows[0] && fromRaiseRow(rows[0]);
+  }
+
+  /** Requests to raise an entity, newest first. */
+  async raisesOf(entity: string): Promise<Raise[]> {
+    const { rows } = await this.pool.query<RaiseRow>(`select ${RAISE_COLUMNS} from atlas.raises where entity = $1 order by asked_at desc limit 20`, [entity]);
+    return rows.map(fromRaiseRow);
+  }
+
+  /** What's been asked of a floor: those waiting, or those decided, newest first. */
+  async raisesTo(floor: string, waiting: boolean, limit = 50): Promise<Raise[]> {
+    const { rows } = await this.pool.query<RaiseRow>(
+      `select ${RAISE_COLUMNS} from atlas.raises where to_floor = $1 and (state = 'waiting') = $2 order by asked_at desc limit $3`,
+      [floor, waiting, limit],
+    );
+    return rows.map(fromRaiseRow);
+  }
+
+  /**
+   * Decides a waiting raise. Keeping it puts the card on the floor above, in
+   * that floor's workspace, and tells other apps the entity changed; what's
+   * known of it stays on its floors. Declining or withdrawing leaves it where it
+   * is. `merged` is recorded after the card was kept and merged into another.
+   */
+  async decideRaise(id: string, d: { as: 'kept' | 'declined' | 'withdrawn' | 'merged'; by: string; workspace?: string; answer?: string; mergedInto?: string }): Promise<Raise> {
+    return this.inTransaction(async (client) => {
+      const { rows: held } = await client.query<RaiseRow>(`select ${RAISE_COLUMNS} from atlas.raises where id = $1 for update`, [id]);
+      const raise = held[0];
+      if (!raise || raise.state !== 'waiting') throw new RaiseError('not-waiting', 'It has already been decided or withdrawn.');
+      if (d.as === 'kept' || d.as === 'merged') {
+        const { rows } = await client.query<EntityRow>(
+          `update atlas.entities set floor = $2, workspace_id = coalesce($3, workspace_id), updated_by = $4, updated_at = now() where id = $1 and state = 'active' and floor = $5 returning ${ENTITY_COLUMNS}`,
+          [raise.entity, raise.to_floor, d.workspace ?? null, d.by, raise.from_floor],
+        );
+        if (!rows[0]) throw new RaiseError('not-active', 'It’s no longer in use where it was asked from, so it can’t be kept here.');
+        await tell(client, 'changed', rows[0]);
+      }
+      const { rows } = await client.query<RaiseRow>(
+        `update atlas.raises set state = $2, decided_by = $3, decided_at = now(), answer = $4, merged_into = $5 where id = $1 returning ${RAISE_COLUMNS}`,
+        [id, d.as, d.by, d.answer ?? '', d.mergedInto ?? null],
+      );
+      return fromRaiseRow(rows[0]);
+    });
   }
 
   /** Writes an entity's identity keys afresh, refusing one another entity holds. */

@@ -3,6 +3,7 @@ import type { DocumentRef } from '@augur/mfe-sdk';
 import { Button, List, PageHead, Ref, Select, State, TextField, relativeTime, type ListItem, type SelectOption } from '@augur/app-kit';
 import { day, floorWords, isA, propertyLabel, typeTree, type AtlasApi, type MatchView, type Matching, type MentionView, type Ontology, type Place, type ProposalObservationView, type ProposalView, type Triage as Queue } from './api.js';
 import { Picker } from './picker.js';
+import { RaisesWaiting } from './raise.js';
 
 /** A mention's words picked out of the passage around them. */
 const inContext = (context: string, text: string) => {
@@ -140,6 +141,7 @@ export function Triage({ api, ontology, place, userId, onMove, onOpenDocument }:
       <>
         <PageHead eyebrow={t ? `${t.floorName} · Triage` : 'Triage'} heading="What’s waiting to be decided" summary={`Proposals made on ${where}. Nothing is added until a lead decides.`} />
         {t?.why ? <p className="atlas-note">{t.why}</p> : null}
+        <RaisesWaiting api={api} onOpenEntity={(id) => onMove({ page: 'entity', id })} />
         <List
           label="Open proposals"
           noun={['proposal', 'proposals']}

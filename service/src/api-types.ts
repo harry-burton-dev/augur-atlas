@@ -509,6 +509,59 @@ export interface MergeBody {
   cites?: { observation: string; stance: 'for' | 'against'; note?: string }[];
 }
 
+/**
+ * A request to keep an entity card on a floor above (PER-326): a lead below
+ * asks; the floor above's leads keep it there, decline with a note, or find
+ * it's one they already have and merge it in. What's known of it stays where
+ * it was recorded.
+ */
+export interface Raise {
+  id: string;
+  entity: string;
+  /** The floor it was kept on when asked, and the one it was asked to go to, as principals. */
+  from: string;
+  to: string;
+  note: string;
+  state: 'waiting' | 'kept' | 'declined' | 'merged' | 'withdrawn';
+  askedBy: string;
+  askedAt: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  /** The note a decline came with. */
+  answer?: string;
+  /** When it was found to be one the floor above already had: that one. */
+  mergedInto?: string;
+}
+
+/** A raise as the caller sees it: with the floors named, the entity, and what they may do with it. */
+export type RaiseView = Raise & {
+  fromName: string;
+  toName: string;
+  card: Extract<OtherEnd, { kind: 'entity' }>;
+  can: { decide: boolean; withdraw: boolean; why?: string };
+};
+
+/** `GET /raises`: what's been asked of the floor the caller stands on. */
+export interface RaiseList {
+  raises: RaiseView[];
+  /** Whether the caller decides them here, and why not. */
+  decide: boolean;
+  why?: string;
+}
+
+/** `GET /entities/:id/raises`: where it may be raised to from here, and the requests made for it. */
+export interface EntityRaises {
+  /** Floors above this one the caller is on, each saying whether it can go there and why not. */
+  to: { floor: string; name: string; can: boolean; why?: string }[];
+  /** Whether the caller may ask from here, and why not. */
+  ask: boolean;
+  why?: string;
+  raises: RaiseView[];
+}
+
+/** `POST /raises/:id/decide`. */
+export type RaiseDecision = { as: 'keep' } | { as: 'decline'; note: string } | { as: 'same'; entity: string; why: string };
+
 /** An entity that might be the same real thing as another, why it's suggested, and whether the caller may merge the two from here. */
 export interface Alike {
   entity: Extract<OtherEnd, { kind: 'entity' }>;

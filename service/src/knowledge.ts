@@ -93,7 +93,7 @@ export const leadsHere = (caller: OnFloor) => caller.workspace.kind === 'persona
 export const LEADS_ONLY = 'Only this floor’s leads accept what’s so here, and raise what’s seen to a floor above.';
 
 /** The floors above the one the caller stands on: what an observation here may be raised to. */
-const floorsAbove = (caller: OnFloor, floors: readonly string[]) => {
+export const floorsAbove = (caller: OnFloor, floors: readonly string[]) => {
   const here = floorPrincipal(caller.id, caller.workspace);
   return floors.filter((f) => f !== here && !f.startsWith('person:'));
 };
