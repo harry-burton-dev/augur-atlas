@@ -257,8 +257,39 @@ describe('atlas', () => {
     '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
     '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], records: [], documents: [] }),
     '/api/atlas/v1/entities/ent_01/alike': () => Response.json({ alike: [], matching: { spelling: true, meaning: true, at: '2026-11-05T00:00:00Z' } }),
+    '/api/atlas/v1/entities/ent_01/raises': () => Response.json({ to: [], ask: false, why: 'Nothing is above this floor.', raises: [] }),
     '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
   };
+
+  it('asks a floor above to keep the card, and says what came of asking before', async () => {
+    let asked: unknown;
+    const fetch = answering({
+      ...ENTITY_ROUTES,
+      '/api/atlas/v1/entities/ent_01/raises': () =>
+        Response.json({
+          to: [{ floor: 'org', name: 'Harbour Group', can: true }, { floor: 'tree:t-ops', name: 'Operations', can: true }],
+          ask: true,
+          raises: [{ id: 'rse_0', entity: 'ent_01', from: 'tree:t-mar', to: 'org', note: '', state: 'declined', answer: 'Not yet', askedBy: 'sam', askedAt: '2026-11-01T00:00:00Z', decidedAt: '2026-11-02T00:00:00Z', fromName: 'Maritime desk', toName: 'Harbour Group', card: { kind: 'entity', id: 'ent_01', type: 'vessel', label: 'Northern Tern', state: 'active', floorName: 'Maritime desk' }, can: { decide: false, withdraw: false } }],
+        }),
+    });
+    const answer = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/atlas/v1/entities/ent_01/raise') {
+        asked = await bodyOf(init);
+        return Response.json({}, { status: 201 });
+      }
+      return answer(path);
+    });
+    const el = await open(ctx(fetch, '/entities/ent_01'));
+    const section = el.querySelector('.atlas-raise');
+    expect(rowsOf(section)).toEqual([expect.objectContaining({ title: 'Asked to keep it on Harbour Group', detail: expect.stringMatching(/^Harbour Group declined .*: “Not yet”$/) })]);
+    await act(async () => button('Ask a floor above to keep it…', section!)!.click());
+    await settle();
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await act(async () => button('Ask', dialog)!.click());
+    await settle();
+    expect(asked).toEqual({ to: 'org' });
+  });
 
   it('offers what might be the same, saying why, and merges it into one after asking why', async () => {
     const GULL = { kind: 'entity', id: 'ent_05', type: 'vessel', label: 'N. Tern', state: 'active', floorName: 'Maritime desk' };
@@ -459,6 +490,30 @@ describe('triage', () => {
     const el = await open(ctx(fetch, '/triage'));
     expect(el.textContent).toContain('Only this floor’s leads decide');
     expect(rowsOf(el.querySelector('.atlas-triage'))).toEqual([expect.objectContaining({ title: 'Port report', detail: '0 of 1 decided · proposed by someone on this floor · version 2' })]);
+  });
+
+  it('lists cards a floor below asks this floor to keep, and keeps one', async () => {
+    const RAISE = {
+      id: 'rse_1', entity: 'ent_01', from: 'tree:t-mar', to: 'org', note: 'Every desk tracks it', state: 'waiting', askedBy: 'sam', askedAt: '2026-11-05T00:00:00Z',
+      fromName: 'Maritime desk', toName: 'Harbour Group', card: { kind: 'entity', id: 'ent_01', type: 'vessel', label: 'Northern Tern', state: 'active', floorName: 'Maritime desk' }, can: { decide: true, withdraw: false },
+    };
+    let decided: unknown;
+    const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
+      if (path.startsWith('/api/atlas/v1/proposals')) return Response.json({ floorName: 'Harbour Group', decide: true, proposals: [] });
+      if (path === '/api/atlas/v1/raises/rse_1/decide') {
+        decided = await bodyOf(init);
+        return Response.json({ ...RAISE, state: 'kept' });
+      }
+      if (path.startsWith('/api/atlas/v1/raises')) return Response.json({ decide: true, raises: decided ? [] : [RAISE] });
+      return new Response(null, { status: 404 });
+    });
+    const el = await open(ctx(fetch, '/triage'));
+    const asked = el.querySelector('.atlas-raises-waiting');
+    expect(rowsOf(asked)).toEqual([expect.objectContaining({ title: 'Northern Tern', detail: expect.stringMatching(/^From Maritime desk · asked .* · “Every desk tracks it”$/) })]);
+    await act(async () => button('Keep it here', asked!)!.click());
+    await settle();
+    expect(decided).toEqual({ as: 'keep' });
   });
 
   it('shows a mention in its passage with what it might be, and links it to the one chosen', async () => {

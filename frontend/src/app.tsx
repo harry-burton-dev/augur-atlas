@@ -30,6 +30,7 @@ import { AtlasApi, entityLine, onEntity, typeTree, whyShown, type Entity, type E
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
 import { MightBeTheSame } from './alike.js';
+import { RaiseCard } from './raise.js';
 import { MergedNote } from './merged.js';
 import { OntologyView } from './ontology.js';
 import { Triage } from './triage.js';
@@ -315,6 +316,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
         />
         <Knowledge api={api} entity={e} ontology={ontology} pickDocument={pickDocument} onOpenEntity={(id) => move({ page: 'entity', id })} />
         <UsedBy api={api} entity={e.id} onOpenIntent={openIntent} onOpenDocument={openDocument} onOpenUnit={openUnit} />
+        {e.state === 'active' ? <RaiseCard key={`raise:${e.id}`} api={api} entity={e} /> : null}
         {e.state === 'active' ? <MightBeTheSame key={e.id} api={api} entity={e} onOpenEntity={(id) => move({ page: 'entity', id })} onMerged={() => void go(place)} /> : null}
       </>
     );

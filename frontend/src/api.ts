@@ -14,6 +14,7 @@ import type {
   EntityList,
   EntityMerge,
   EntityMerges,
+  EntityRaises,
   EntityUses as UsedBy,
   EntityView as Entity,
   Fact,
@@ -30,6 +31,9 @@ import type {
   OntologyVersion,
   OtherEnd,
   PackLoaded,
+  RaiseDecision,
+  RaiseList,
+  RaiseView,
   Packs,
   PackUpload,
   PackView as Pack,
@@ -46,7 +50,7 @@ import type {
 
 // The wire types are written once, in the service's api-types.ts, and shared with it. Where the service keeps a
 // record under the same name, the page's shape is a `...View` there; the pages know it by the shorter name here.
-export type { Alike, AlikeList, Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
+export type { Alike, AlikeList, EntityRaises, RaiseList, RaiseView, Dispute, Entity, EntityMerges, NewObservation, Pack, UsedBy };
 export type {
   Adoption,
   DetailDef,
@@ -254,6 +258,29 @@ export class AtlasApi {
     });
     if (!res.ok) throw await AppError.fromResponse(res, this.names);
     return res.text();
+  }
+
+  /** Where an entity may be raised to from here, and the requests made for it. */
+  entityRaises(id: string) {
+    return this.call<EntityRaises>('GET', `/entities/${encodeURIComponent(id)}/raises`);
+  }
+
+  /** Asks a floor above to keep this entity card there. */
+  askRaise(id: string, to: string, note: string) {
+    return this.call<RaiseView>('POST', `/entities/${encodeURIComponent(id)}/raise`, { to, ...(note.trim() ? { note } : {}) });
+  }
+
+  /** What's been asked of the floor the person stands on. */
+  raises(state: 'waiting' | 'decided' = 'waiting') {
+    return this.call<RaiseList>('GET', '/raises', undefined, { state });
+  }
+
+  decideRaise(id: string, decision: RaiseDecision) {
+    return this.call<RaiseView>('POST', `/raises/${encodeURIComponent(id)}/decide`, decision);
+  }
+
+  withdrawRaise(id: string) {
+    return this.call<RaiseView>('POST', `/raises/${encodeURIComponent(id)}/withdraw`);
   }
 
   /** Entities that might be the same real thing as this one, each saying why and whether it can be merged from here. */
