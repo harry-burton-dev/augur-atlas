@@ -23,6 +23,7 @@ const people: People = {
   principals: async (person) => PRINCIPALS[person] ?? [`person:${person}`, 'org'],
   teamPath: async (team) => PATHS[team] ?? [team],
   teamNames: async (ids) => new Map(ids.filter((id) => NAMES.has(id)).map((id) => [id, NAMES.get(id)!])),
+  orgName: async () => 'Harbour Group',
 };
 
 const person = (id: string): Caller => ({ id, name: id, departments: [], roles: [] });
@@ -105,7 +106,7 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
       const ids = async (caller: Caller) => (await call('GET', '/v1/entities?limit=200', caller)).json().entities.map((e: { id: string }) => e.id);
       expect(await ids(on('sam', team('t-mar')))).toEqual(expect.arrayContaining([mar, orgPort]));
       expect(await ids(on('sam', team('t-mar')))).not.toContain(mine);
-      expect((await call('GET', '/v1/entities', on('sam', team('t-mar')))).json().seeing).toEqual(['Org', 'Operations', 'Maritime desk']);
+      expect((await call('GET', '/v1/entities', on('sam', team('t-mar')))).json().seeing).toEqual(['Harbour Group', 'Operations', 'Maritime desk']);
       // From Operations, above the Maritime desk, the desk's knowledge doesn't show.
       expect(await ids(on('sam', team('t-ops')))).not.toContain(mar);
       // Your own floor shows every level you belong to.
@@ -186,7 +187,7 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().entities).toEqual([
-      { id: felix.id, ref: { kind: 'entity', id: felix.id, type: 'port', label: 'Felixstowe' }, state: 'active', floorName: 'Org' },
+      { id: felix.id, ref: { kind: 'entity', id: felix.id, type: 'port', label: 'Felixstowe' }, state: 'active', floorName: 'Harbour Group' },
       { id: ledger.id, hidden: true, reason: 'kept', floor: 'tree:t-fin', message: expect.stringMatching(/Finance floor.*Ask one of its leads/) },
       { id: 'ent_01JBX7Q2W3E4R5T6Y7V8H9Q0PA', missing: true, message: 'There’s no such entity.' },
     ]);
@@ -200,7 +201,7 @@ describe.runIf(process.env.DATABASE_URL)('Data Atlas', () => {
     const res = await call('POST', '/v1/subgraph', on('sam', ORG), { seeds: [{ id: felix.id }, { id: mine.id }, { id: 'ent_nope' }], depth: 2 });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      nodes: [{ ref: { kind: 'entity', id: felix.id, type: 'port', label: 'Harwich' }, state: 'active', floorName: 'Org', depth: 0 }],
+      nodes: [{ ref: { kind: 'entity', id: felix.id, type: 'port', label: 'Harwich' }, state: 'active', floorName: 'Harbour Group', floorKind: 'org', depth: 0 }],
       edges: [],
       more: [],
       unseen: [{ id: mine.id, reason: 'elsewhere', floor: 'person:sam', message: expect.any(String), near: [] }],

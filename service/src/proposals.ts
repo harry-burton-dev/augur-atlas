@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { MatchView, ObservationDecisionBody, ProposalRights, ProposalView, Triage } from './api-types.ts';
 import type { OnFloor } from './app.ts';
-import { floorPrincipal } from './floors.ts';
+import { floorKindOf, floorPrincipal } from './floors.ts';
 import { ID_PARAMS, LEADS_ONLY, NOTE, SOURCE, WHEN, accept, leadsHere, otherEnds, sayable, sourceOf, when, type Atlas } from './knowledge.ts';
 import { detailsOf } from './ontology.ts';
 import { KeyTakenError, type Entity, type Mention, type Proposal, type ProposalItem, type ProposedObservation, type ProposedTerm, type Source } from './store.ts';
@@ -99,7 +99,8 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
     const here = floorPrincipal(caller.id, caller.workspace);
     if (p.state !== 'open') return { decide: false, finish: false, withdraw: false, why: p.state === 'finished' ? 'It’s finished: what was decided is in the model.' : 'It was withdrawn.' };
     if (p.floor !== here) {
-      const where = floorName === 'Org' ? 'the org floor' : floorName === 'You' ? 'your own floor' : floorName;
+      const kind = floorKindOf(caller.id, p.floor);
+      const where = kind === 'org' ? 'the org floor' : kind === 'own' ? 'your own floor' : floorName;
       return { decide: false, finish: false, withdraw: false, why: `It waits in the Triage of ${where}: go there to work on it.` };
     }
     const lead = leadsHere(caller);

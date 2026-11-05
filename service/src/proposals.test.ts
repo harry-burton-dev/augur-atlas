@@ -23,6 +23,7 @@ const people: People = {
   principals: async (person) => PRINCIPALS[person] ?? [`person:${person}`, 'org'],
   teamPath: async (team) => PATHS[team] ?? [team],
   teamNames: async (ids) => new Map(ids.filter((id) => NAMES.has(id)).map((id) => [id, NAMES.get(id)!])),
+  orgName: async () => 'Harbour Group',
 };
 
 const on = (id: string, workspace: CallerWorkspace): Caller => ({ id, name: id, departments: [], roles: [], workspace });

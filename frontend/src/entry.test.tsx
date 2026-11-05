@@ -3,7 +3,7 @@ import { createEventBus, type MountContext, type Workspace } from '@augur/mfe-sd
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MultiDirectedGraph } from 'graphology';
-import { entityLine, placeFor, pathFor, typeTree, whyShown, type Entity, type Ontology, type ProposalView, type Subgraph } from './api.js';
+import { entityLine, floorWords, placeFor, pathFor, typeTree, whyShown, type Entity, type Ontology, type ProposalView, type Subgraph } from './api.js';
 import { kindsOffered } from './picker.js';
 import { foldsOf, hiddenNear, rings, syncGraph, widen } from './graph.js';
 import app, { placeForIntent, proposalOffer } from './entry.js';
@@ -45,6 +45,7 @@ const TERN: Entity = {
   workspace: 't-mar',
   floor: 'tree:t-mar',
   floorName: 'Maritime desk',
+  floorKind: 'team',
   state: 'active',
   createdBy: 'u1',
   createdAt: '2026-10-27T00:00:00Z',
@@ -194,7 +195,8 @@ describe('entity intents', () => {
   });
 
   it('says why an entity shows from where you stand', () => {
-    expect(whyShown({ floor: 'org', floorName: 'Org' }, 'team', 'Maritime desk')).toMatch(/shows on every floor/);
+    expect(whyShown({ floor: 'org', floorName: 'Harbour Group' }, 'team', 'Maritime desk')).toMatch(/shows on every floor/);
+    expect(['Harbour Group', 'Your own floor', 'A team', 'The organisation'].map(floorWords)).toEqual(['Harbour Group', 'your own floor', 'a team’s floor', 'the organisation']);
     expect(whyShown({ floor: 'tree:t-mar', floorName: 'Maritime desk' }, 'team', 'Maritime desk')).toBe('It’s kept on this floor.');
     expect(whyShown({ floor: 'tree:t-ops', floorName: 'Operations' }, 'team', 'Maritime desk')).toMatch(/Operations, a floor above this one/);
     expect(whyShown({ floor: 'tree:t-ops', floorName: 'Operations' }, 'personal', 'You')).toMatch(/Operations, one of your teams/);
@@ -209,7 +211,7 @@ describe('entity intents', () => {
   it('picks one entity for another app, answering with an EntityRef', async () => {
     const fetch = answering({
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
-      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Org', 'Maritime desk'] }),
+      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Harbour Group', 'Maritime desk'] }),
     });
     const respond = vi.fn();
     const el = await open(ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { purpose: 'Bind to this intent', types: ['vessel'] } }, reply: { respond, cancel: vi.fn() } }));
@@ -223,7 +225,7 @@ describe('entity intents', () => {
     const PORT: Entity = { ...TERN, id: 'ent_02', type: 'vessel', label: 'Grey Gull' };
     const fetch = answering({
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
-      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN, PORT], total: 2, floors: ['org'], seeing: ['Org'] }),
+      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN, PORT], total: 2, floors: ['org'], seeing: ['Harbour Group'] }),
     });
     const respond = vi.fn();
     const el = await open(ctx(fetch, '/', { intent: { type: 'entity.pick', payload: { multiple: true } }, reply: { respond, cancel: vi.fn() } }));
@@ -241,10 +243,10 @@ describe('atlas', () => {
   it('lists what shows from this floor, and says which floors that is', async () => {
     const fetch = answering({
       '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
-      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Org', 'Maritime desk'] }),
+      '/api/atlas/v1/entities': () => Response.json({ entities: [TERN], total: 1, floors: ['org', 'tree:t-mar'], seeing: ['Harbour Group', 'Maritime desk'] }),
     });
     const el = await mounted(ctx(fetch));
-    expect(el.querySelector('.quill-page-head-summary')!.textContent).toMatch(/floors above it shows: Org, Maritime desk/);
+    expect(el.querySelector('.quill-page-head-summary')!.textContent).toMatch(/floors above it shows: Harbour Group, Maritime desk/);
     expect(rowsOf(el)).toEqual([expect.objectContaining({ title: 'Northern Tern', detail: 'Vessel · IMO number 9400117 · Kept on Maritime desk' })]);
     await act(async () => void (await app.unmount!(el)));
     expect(el.textContent).toBe('');
@@ -291,13 +293,13 @@ describe('atlas', () => {
   });
 });
 
-const node = (id: string, label: string, depth: number, floorName = 'Org') => ({ ref: { kind: 'entity' as const, id, type: 'vessel', label }, state: 'active' as const, floorName, depth });
+const node = (id: string, label: string, depth: number, floorName = 'Harbour Group') => ({ ref: { kind: 'entity' as const, id, type: 'vessel', label }, state: 'active' as const, floorName, floorKind: floorName === 'Harbour Group' ? ('org' as const) : ('team' as const), depth });
 const AROUND_TERN: Subgraph = {
   nodes: [node('ent_01', 'Northern Tern', 0, 'Maritime desk'), node('ent_02', 'Halden Shipping', 1), node('ent_03', 'Southern Tern', 1)],
   edges: [
-    { id: 'fct_a', from: 'ent_01', to: 'ent_02', relation: 'operated-by', floorName: 'Org', disputed: 0 },
-    { id: 'fct_b', from: 'ent_03', to: 'ent_02', relation: 'operated-by', floorName: 'Org', disputed: 1 },
-    { id: 'fct_c', from: 'ent_03', to: 'ent_01', relation: 'operated-by', floorName: 'Org', disputed: 1 },
+    { id: 'fct_a', from: 'ent_01', to: 'ent_02', relation: 'operated-by', floorName: 'Harbour Group', disputed: 0 },
+    { id: 'fct_b', from: 'ent_03', to: 'ent_02', relation: 'operated-by', floorName: 'Harbour Group', disputed: 1 },
+    { id: 'fct_c', from: 'ent_03', to: 'ent_01', relation: 'operated-by', floorName: 'Harbour Group', disputed: 1 },
   ],
   more: [{ entity: 'ent_02', relation: 'operated-by', direction: 'in', count: 3 }],
   unseen: [{ id: 'ent_09', reason: 'kept', floor: 'tree:t-fin', message: 'It’s kept on the Finance floor. Ask one of its leads if you need it.', near: ['ent_02'] }],
@@ -305,7 +307,7 @@ const AROUND_TERN: Subgraph = {
 };
 const MORE_HALDEN: Subgraph = {
   nodes: [node('ent_02', 'Halden Shipping', 0), node('ent_04', 'Grey Heron', 1), node('ent_05', 'Osprey', 1), node('ent_06', 'Kittiwake', 1)],
-  edges: ['ent_04', 'ent_05', 'ent_06'].map((id, i) => ({ id: `fct_m${i}`, from: id, to: 'ent_02', relation: 'operated-by', floorName: 'Org', disputed: 0 })),
+  edges: ['ent_04', 'ent_05', 'ent_06'].map((id, i) => ({ id: `fct_m${i}`, from: id, to: 'ent_02', relation: 'operated-by', floorName: 'Harbour Group', disputed: 0 })),
   more: [{ entity: 'ent_04', relation: 'operated-by', direction: 'out', count: 1 }],
   unseen: [],
   missing: [],

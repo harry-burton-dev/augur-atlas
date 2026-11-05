@@ -13,6 +13,7 @@ const people: People = {
   principals: async (person) => [`person:${person}`, 'org'],
   teamPath: async (team) => [team],
   teamNames: async () => new Map(),
+  orgName: async () => 'Harbour Group',
 };
 const ORG: CallerWorkspace = { id: 'w-org', kind: 'org', role: 'member' };
 const ADMIN: Caller = { id: 'ada', name: 'Ada', departments: [], roles: ['admin'], workspace: ORG };

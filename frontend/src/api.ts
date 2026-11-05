@@ -1,4 +1,5 @@
 import { AppError, createAppClient, type AppClient, type AppFetcher } from '@augur/app-kit';
+import { FLOOR_WORDS } from '../../service/src/api-types.js';
 
 import type {
   Adoption,
@@ -353,7 +354,7 @@ export const entityLine = (ontology: Ontology | undefined, e: Entity) => {
 export const whyShown = (e: Pick<Entity, 'floor' | 'floorName'>, floorKind: string, floorName: string) => {
   if (e.floor === 'org') return 'It’s kept on the org floor, and what’s on the org floor shows on every floor.';
   if (e.floor.startsWith('person:')) return 'It’s kept on your own floor: only you see it.';
-  const team = e.floorName === 'A team' ? 'a team' : e.floorName;
+  const team = e.floorName === FLOOR_WORDS.unnamedTeam ? 'a team' : e.floorName;
   if (floorKind === 'personal') return `It’s kept on ${team}, one of your teams. Your own floor shows everything you can reach.`;
   if (floorKind === 'team' && e.floorName === floorName) return 'It’s kept on this floor.';
   return `It’s kept on ${team}, a floor above this one, and what’s kept above shows below.`;
@@ -379,8 +380,17 @@ export const propertiesOf = (ontology: Ontology, type: string) => {
   ];
 };
 
-/** A floor's name in a sentence: "your own floor", "the org floor", or the team's name. */
-export const floorWords = (name: string) => (name === 'You' ? 'your own floor' : name === 'Org' ? 'the org floor' : name);
+/** A floor's name in a sentence: "your own floor", the organisation's or the team's name, or what it is when it has none. */
+export const floorWords = (name: string) =>
+  name === FLOOR_WORDS.own
+    ? 'your own floor'
+    : name === FLOOR_WORDS.someonesOwn
+      ? 'someone’s own floor'
+      : name === FLOOR_WORDS.unnamedTeam
+        ? 'a team’s floor'
+        : name === FLOOR_WORDS.unnamedOrg
+          ? 'the organisation'
+          : name;
 
 /** A property's name, read from this entity's side: a link that comes in reads backwards. */
 export const propertyLabel = (ontology: Ontology | undefined, entityType: string, key: string, direction: 'out' | 'in' = 'out') => {

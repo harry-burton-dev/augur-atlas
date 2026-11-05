@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { EntityUses, FactBody, FactRights, Knowledge, ObservationRights, Observed, OtherEnd, Raised, Subgraph, SubgraphQuery } from './api-types.ts';
 import type { OnFloor } from './app.ts';
 import type { Audit } from './audit.ts';
-import { floorPrincipal, type Unseen } from './floors.ts';
+import { floorKindOf, floorPrincipal, type Unseen } from './floors.ts';
 import { checkDetail, detailsOf, isA, normaliseDetail, relationsFrom, withSubtypes, type DetailDef, type Ontology, type RelationDef } from './ontology.ts';
 import { refOf, type Entity, type Fact, type KeyTakenError, type Observation, type PgAtlasStore, type Source } from './store.ts';
 import type { Resolver } from './resolve.ts';
@@ -162,7 +162,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
       for (const o of observations) if (o.raisedFrom) raised.set(o.raisedFrom, [...(raised.get(o.raisedFrom) ?? []), o.floor]);
 
       const factRights = (f: Fact): FactRights => {
-        if (f.floor !== here) return { end: false, withdraw: false, dispute: true, why: `It’s ${named(f.floor) === 'Org' ? 'the org’s' : `kept on ${named(f.floor)}`}: its leads end or withdraw it there. You can dispute it from here.` };
+        if (f.floor !== here) return { end: false, withdraw: false, dispute: true, why: `It’s ${f.floor === 'org' ? 'the org’s' : `kept on ${named(f.floor)}`}: its leads end or withdraw it there. You can dispute it from here.` };
         if (!leadsHere(caller)) return { end: false, withdraw: false, dispute: true, why: 'Only this floor’s leads end or withdraw what it accepts. You can dispute it.' };
         return { end: !f.validTo, withdraw: true, dispute: true, ...(f.validTo ? { why: 'It has already ended.' } : {}) };
       };
@@ -182,7 +182,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
         can: factRights(f),
       });
       const observationRights = (o: Observation): ObservationRights => {
-        if (o.floor !== here) return { accept: false, raise: false, raiseTo: [], why: `It was recorded on ${named(o.floor) === 'Org' ? 'the org floor' : named(o.floor)}: go there to accept or raise it.` };
+        if (o.floor !== here) return { accept: false, raise: false, raiseTo: [], why: `It was recorded on ${o.floor === 'org' ? 'the org floor' : named(o.floor)}: go there to accept or raise it.` };
         if (!leadsHere(caller)) return { accept: false, raise: false, raiseTo: [], why: LEADS_ONLY };
         const raiseTo = above.filter((f) => !(raised.get(o.id) ?? []).includes(f)).map((f) => ({ floor: f, name: named(f) }));
         return { accept: true, raise: raiseTo.length > 0, raiseTo, ...(raiseTo.length ? {} : { why: above.length ? 'It’s already on every floor above this one.' : 'Nothing is above the org floor.' }) };
@@ -600,7 +600,7 @@ export const subgraph = async (
   return {
     nodes: [...nodes].map(([id, d]) => {
       const e = entities.get(id)!;
-      return { ref: refOf(e), state: e.state, floorName: named(e.floor), depth: d };
+      return { ref: refOf(e), state: e.state, floorName: named(e.floor), floorKind: floorKindOf(caller.id, e.floor), depth: d };
     }),
     edges: kept.map((f) => ({ id: f.id, from: f.entity, to: f.target!, relation: f.property, floorName: named(f.floor), ...(f.validFrom ? { validFrom: f.validFrom } : {}), ...(f.validTo ? { validTo: f.validTo } : {}), disputed: disputed.get(f.id) ?? 0 })),
     more,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { floorPrincipal, unseen, viewFloors } from './floors.ts';
+import { floorKindOf, floorPrincipal, unseen, viewFloors } from './floors.ts';
 import { checkDetail, detailsOf, normaliseDetail, starterSql, STARTER_TYPES } from './ontology.ts';
 
 const sam = ['person:sam', 'team:t-mar', 'tree:t-mar', 'tree:t-ops', 'org'];
@@ -46,5 +46,11 @@ describe('ontology', () => {
     const sql = starterSql();
     expect(sql.indexOf("'vehicle'")).toBeLessThan(sql.indexOf("'vessel'"));
     expect(sql).not.toMatch(/\b(drop|delete|truncate)\b/i);
+  });
+});
+
+describe('floorKindOf', () => {
+  it('says what kind of floor something is kept on, from where the caller stands', () => {
+    expect(['org', 'person:sam', 'person:ana', 'tree:t-mar'].map((f) => floorKindOf('sam', f))).toEqual(['org', 'own', 'personal', 'team']);
   });
 });

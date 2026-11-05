@@ -1,8 +1,8 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { appServer, packageVersion, Problem, sendProblem, serviceFastifyOptions, signedInCaller, type CallerCheck, type OnFloor } from '@augur/service-kit';
-import type { EntityFields, EntityList, EntityRights, EntityView, SubgraphQuery } from './api-types.ts';
+import { FLOOR_WORDS, type EntityFields, type EntityList, type EntityRights, type EntityView, type SubgraphQuery } from './api-types.ts';
 import { auditFromEnv, type Audit } from './audit.ts';
-import { floorPrincipal, unseen, viewFloors } from './floors.ts';
+import { floorKindOf, floorPrincipal, unseen, viewFloors } from './floors.ts';
 import { checkDetail, detailsOf, normaliseDetail, withSubtypes, type Ontology } from './ontology.ts';
 import { peopleFromEnv, type People } from './people.ts';
 import { knowledgeRoutes, subgraph, type Atlas } from './knowledge.ts';
@@ -37,7 +37,7 @@ const ALIASES = { type: 'array', maxItems: 20, items: { type: 'string', minLengt
 const DESCRIPTION = { type: 'string', maxLength: 2000 } as const;
 const DETAILS = { type: 'object', maxProperties: 50, additionalProperties: { type: 'string', maxLength: 200 } } as const;
 /** A team identity couldn't name: shown as is in lists, left unnamed in sentences. */
-const UNNAMED_TEAM = 'A team';
+const UNNAMED_TEAM = FLOOR_WORDS.unnamedTeam;
 const knownName = (name: string) => (name === UNNAMED_TEAM ? undefined : name);
 /** Entity links as apps send them: only the id is read; the rest of an EntityRef may come along. */
 const REFS = { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 64 } }, required: ['id'] } } as const;
@@ -72,11 +72,19 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
     return { principals, floors: viewFloors(caller.workspace, principals, path) };
   };
 
-  /** Floors' names as people know them: "Org", "You", a team's name. */
+  /** Floors' names as people know them: the organisation's name as Admin sets it, your own floor, a team's name. */
   const nameFloors = async (caller: OnFloor, floors: readonly string[]) => {
-    const teams = await people.teamNames([...new Set(floors.filter((f) => f.startsWith('tree:')).map((f) => f.slice(5)))]).catch(() => new Map<string, string>());
-    return (floor: string) =>
-      floor === 'org' ? 'Org' : floor === `person:${caller.id}` ? 'You' : floor.startsWith('person:') ? 'Someone’s own' : (teams.get(floor.slice(5)) ?? UNNAMED_TEAM);
+    const [teams, org] = await Promise.all([
+      people.teamNames([...new Set(floors.filter((f) => f.startsWith('tree:')).map((f) => f.slice(5)))]).catch(() => new Map<string, string>()),
+      floors.includes('org') ? people.orgName().catch(() => undefined) : undefined,
+    ]);
+    return (floor: string) => {
+      const kind = floorKindOf(caller.id, floor);
+      if (kind === 'org') return org ?? FLOOR_WORDS.unnamedOrg;
+      if (kind === 'own') return FLOOR_WORDS.own;
+      if (kind === 'personal') return FLOOR_WORDS.someonesOwn;
+      return teams.get(floor.slice(5)) ?? UNNAMED_TEAM;
+    };
   };
 
   const rightsOn = (caller: OnFloor, entity: Entity, floorName: string): EntityRights => {
@@ -84,7 +92,8 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
     if (entity.state !== 'active') return { edit: false, retire: false, why: 'It has been retired, so it can’t be changed.' };
     const here = floorPrincipal(caller.id, caller.workspace);
     if (entity.floor !== here) {
-      const where = floorName === 'You' ? 'your own floor' : floorName === 'Org' ? 'the org floor' : knownName(floorName) ? `the ${floorName} floor` : 'another floor';
+      const kind = floorKindOf(caller.id, entity.floor);
+      const where = kind === 'own' ? 'your own floor' : kind === 'org' ? 'the org floor' : kind === 'team' && knownName(floorName) ? `the ${floorName} floor` : 'another floor';
       return { edit: false, retire: false, why: `It’s kept on ${where}: go there to change it.` };
     }
     const retire = caller.workspace.role === 'lead' || entity.createdBy === caller.id;
@@ -93,7 +102,7 @@ export const buildApp = async ({ store, callers, people = peopleFromEnv(), audit
 
   const view = async (caller: OnFloor, entities: Entity[]): Promise<EntityView[]> => {
     const named = await nameFloors(caller, entities.map((e) => e.floor));
-    return entities.map((e) => ({ ...e, floorName: named(e.floor), can: rightsOn(caller, e, named(e.floor)) }));
+    return entities.map((e) => ({ ...e, floorName: named(e.floor), floorKind: floorKindOf(caller.id, e.floor), can: rightsOn(caller, e, named(e.floor)) }));
   };
 
   /** Checks and tidies details against the ontology; the first problem found, in words, when there is one. */

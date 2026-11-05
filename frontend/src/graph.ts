@@ -1,5 +1,6 @@
 import { MultiDirectedGraph } from 'graphology';
 import { propertyLabel, type Fold, type GraphEdge, type GraphNode, type GraphUnseen, type Ontology, type Subgraph } from './api.js';
+import type { FloorKind } from '../../service/src/api-types.js';
 
 /**
  * What the explorer has opened so far around its centre: each answer from the
@@ -107,7 +108,7 @@ export const hoverDrawer =
   };
 
 /** Where a node is kept decides its colour, the same marks as the floor gauge. */
-const floorColour = (look: Look, floorName: string) => (floorName === 'You' ? look.you : floorName === 'Org' ? look.org : look.team);
+const floorColour = (look: Look, kind: FloorKind) => (kind === 'own' ? look.you : kind === 'org' ? look.org : look.team);
 
 export const FOLD = 'fold:';
 export const HIDDEN = 'hidden:';
@@ -147,7 +148,7 @@ export const syncGraph = (graph: MultiDirectedGraph, open: Explored, ontology: O
     want.set(id, {
       label: n.ref.label,
       size: centre ? 16 : Math.max(6, 11 - n.depth * 2),
-      color: floorColour(look, n.floorName),
+      color: floorColour(look, n.floorKind),
       kind: 'entity',
       fixed: centre,
       ...(n.state !== 'active' ? { color: look.muted } : {}),
