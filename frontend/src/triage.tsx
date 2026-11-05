@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DocumentRef } from '@augur/mfe-sdk';
-import { Button, List, PageHead, Ref, Select, State, TextField, relativeTime, type ListItem, type SelectOption } from '@augur/app-kit';
+import { Button, Dialog, List, PageHead, Ref, Select, State, TextField, relativeTime, type DialogSubmit, type ListItem, type SelectOption } from '@augur/app-kit';
 import { day, floorWords, isA, propertyLabel, typeTree, type AtlasApi, type MatchView, type Matching, type MentionView, type Ontology, type Place, type ProposalObservationView, type ProposalView, type Triage as Queue } from './api.js';
 import { Picker } from './picker.js';
 import { RaisesWaiting } from './raise.js';
@@ -74,6 +74,8 @@ export function Triage({ api, ontology, place, userId, onMove, onOpenDocument }:
   const [making, setMaking] = useState('');
   const [newType, setNewType] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  /** The mention whose matches a lead is saying are one thing. */
+  const [same, setSame] = useState<{ proposal: string; mention: MentionView }>();
 
   const proposalId = place.page === 'proposal' ? place.id : '';
   const load = useCallback(async () => {
@@ -168,6 +170,39 @@ export function Triage({ api, ontology, place, userId, onMove, onOpenDocument }:
       .map(({ type }) => ({ value: type.key, label: type.label }));
   };
 
+  /** Merges one match under another, then shows the proposal again: the one placed under no longer shows as a match. */
+  const mergeMatches: DialogSubmit = async (values) => {
+    if (!same) return false as const;
+    if (values.keep === values.other) throw new Error('Choose two different entities: the one that stays, and the one that’s the same as it.');
+    await api.merge(values.other, values.keep, values.why);
+    const proposal = same.proposal;
+    setSame(undefined);
+    setOpen(await api.proposal(proposal));
+  };
+  const sameDialog = () => {
+    if (!same) return null;
+    const options: SelectOption[] = same.mention.matches.map((x) => ({ value: x.entity.id, label: `${x.entity.label} · ${floorWords(x.entity.floorName)}` }));
+    return (
+      <Dialog
+        open
+        onClose={() => setSame(undefined)}
+        eyebrow={`“${same.mention.text}”`}
+        heading="These are the same thing?"
+        summary="The second is placed under the one that stays. Nothing moves: what’s known of each stays its own, and the merge can be undone from either entity’s page. Only a lead of the floor the second is kept on can merge it, and both must be kept on the same floor."
+        actionLabel="Merge"
+        busyLabel="Merging…"
+        onSubmit={mergeMatches}
+        fields={
+          <>
+            <Select name="keep" label="The one that stays" options={options} defaultValue={options[0]?.value} />
+            <Select name="other" label="The same thing, placed under it" options={options} defaultValue={options[1]?.value} />
+            <TextField name="why" label="Why they’re the same" required multiline maxLength={2000} />
+          </>
+        }
+      />
+    );
+  };
+
   const mentionCard = (p: ProposalView, m: MentionView) => {
     const can = p.can.decide;
     const why = p.can.why ?? 'Only this floor’s leads decide what’s added.';
@@ -211,6 +246,13 @@ export function Triage({ api, ontology, place, userId, onMove, onOpenDocument }:
             ) : (
               <p className="atlas-note">Nothing that shows from here has this name, its keys, or one like it.</p>
             )}
+            {m.matches.length > 1 ? (
+              <div className="atlas-actions">
+                <Button kind="ghost" size="sm" disabled={!can} reason={why} busy={waiting} onPress={() => setSame({ proposal: p.id, mention: m })}>
+                  {m.matches.length === 2 ? 'These two are the same…' : 'Two of these are the same…'}
+                </Button>
+              </div>
+            ) : null}
             <div className="atlas-actions">
               <Button
                 kind="ghost"
@@ -428,5 +470,10 @@ export function Triage({ api, ontology, place, userId, onMove, onOpenDocument }:
     );
   };
 
-  return <div className="atlas-triage">{place.page === 'proposal' ? proposalPage() : listPage()}</div>;
+  return (
+    <div className="atlas-triage">
+      {place.page === 'proposal' ? proposalPage() : listPage()}
+      {sameDialog()}
+    </div>
+  );
 }
