@@ -65,6 +65,18 @@ describe('packs', () => {
     expect(checkChanges(o, [{ op: 'edit-relation', key: 'knows', from: [] }])).toMatch(/can only widen: it already runs from Agent/);
     expect(checkChanges(o, [{ ...unit, type: { ...unit.type, key: 'Unit!' } }])).toMatch(/won’t do as a key/);
   });
+
+  it('asks a quantity for its unit and a choice for its values', () => {
+    const o: Ontology = { version: 1, types: [{ key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [] }], relations: [] };
+    const add = (detail: Ontology['types'][number]['details'][number]) => checkChanges(o, [{ op: 'add-detail', type: 'vessel', detail }]);
+    expect(add({ key: 'length', label: 'Length', kind: 'quantity', identity: false })).toMatch(/Say what Length is measured in/);
+    expect(add({ key: 'length', label: 'Length', kind: 'quantity', identity: false, unit: 'm' })).toBeUndefined();
+    expect(add({ key: 'name', label: 'Name', kind: 'text', identity: false, unit: 'm' })).toBe('Only a quantity has a unit.');
+    expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['In service'] })).toMatch(/at least two values/);
+    expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['Laid up', 'laid up'] })).toMatch(/must differ/);
+    expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: true, values: ['In service', 'Laid up'] })).toMatch(/can’t say which thing it is/);
+    expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['In service', 'Laid up'] })).toBeUndefined();
+  });
 });
 
 describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
@@ -155,5 +167,22 @@ describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
     expect(match('vessel')).toBe(`${CCO}Watercraft`);
     expect(match('naval-unit')).toBe('https://example.org/mim#NavalUnit');
     expect(match('patrol-boat')).toBe('https://augur.invalid/atlas/ontology#patrol-boat');
+  });
+
+  it('keeps a quantity’s unit and a choice’s values', async () => {
+    const res = await call('POST', '/v1/ontology/changes', ADMIN, {
+      changes: [
+        { op: 'add-detail', type: 'vessel', detail: { key: 'gross-tonnage', label: 'Gross tonnage', kind: 'quantity', identity: false, unit: 't' } },
+        { op: 'add-detail', type: 'vessel', detail: { key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['In service', 'Laid up'] } },
+      ],
+    });
+    expect(res.statusCode).toBe(200);
+    const vessel = (await call('GET', '/v1/ontology', SAM)).json().types.find((t: { key: string }) => t.key === 'vessel');
+    expect(vessel.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'gross-tonnage', kind: 'quantity', unit: 't' }),
+        expect.objectContaining({ key: 'status', kind: 'choice', values: ['In service', 'Laid up'] }),
+      ]),
+    );
   });
 });

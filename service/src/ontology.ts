@@ -186,7 +186,9 @@ export const checkDetail = (detail: DetailDef, value: string): string | undefine
   if (!value.trim()) return `${detail.label} can’t be blank.`;
   if (value.length > 200) return `${detail.label} is too long.`;
   if (detail.kind === 'number' && !Number.isFinite(Number(value))) return `${detail.label} must be a number.`;
+  if (detail.kind === 'quantity' && !Number.isFinite(Number(value))) return `${detail.label} must be a number${detail.unit ? `, in ${detail.unit}` : ''}.`;
   if (detail.kind === 'date' && Number.isNaN(Date.parse(value))) return `${detail.label} must be a date.`;
+  if (detail.kind === 'choice' && !(detail.values ?? []).includes(value)) return `${detail.label} must be one of: ${(detail.values ?? []).join(', ')}.`;
   if (detail.pattern && !new RegExp(`^(?:${detail.pattern})$`).test(value)) return detail.hint ? `${detail.label} doesn’t look right: ${detail.hint.toLowerCase()}.` : `${detail.label} doesn’t look right.`;
   return undefined;
 };
@@ -197,6 +199,9 @@ export const checkDetail = (detail: DetailDef, value: string): string | undefine
  * loses its spaces and, if it's lettered, goes to capitals.
  */
 export const normaliseDetail = (detail: DetailDef, value: string) => {
+  // A choice is kept as its value is written in the ontology, whatever its case.
+  if (detail.kind === 'choice') return (detail.values ?? []).find((v) => v.toLowerCase() === value.trim().toLowerCase()) ?? value.trim();
+  if (detail.kind === 'quantity' || detail.kind === 'number') return value.trim().replace(/\s+/g, '');
   if (!detail.pattern) return value.trim().replace(/\s+/g, ' ');
   const bare = value.replace(/\s+/g, '');
   return /[A-Z]/.test(detail.pattern) ? bare.toUpperCase() : bare;

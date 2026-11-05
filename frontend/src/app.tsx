@@ -26,7 +26,7 @@ import {
   type SelectOption,
 } from '@augur/app-kit';
 import manifest from '../../manifest.json';
-import { AtlasApi, entityLine, isPickedIntent, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type PickedIntent, type Place } from './api.js';
+import { AtlasApi, detailText, entityLine, isPickedIntent, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type PickedIntent, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
 import { MightBeTheSame } from './alike.js';
@@ -307,7 +307,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
         <Details
           items={
             [
-              ...details.map((d) => ({ label: d.label, value: e.details[d.key] ?? '', ...(d.identity ? { note: 'identity key' } : {}) })),
+              ...details.map((d) => ({ label: d.label, value: detailText(d, e.details[d.key]), ...(d.identity ? { note: 'identity key' } : {}) })),
               { label: 'Kept on', value: e.floorName },
               { label: 'Why it shows here', value: whyShown(e, floorKind, floorName), explained: explain },
               { label: 'Added', value: relativeTime(e.createdAt) },
@@ -326,17 +326,29 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
 
   const detailFields = (kind: string, values: Record<string, string> = {}) =>
     ontology
-      ? onEntity(ontology, kind).map((d) => (
+      ? onEntity(ontology, kind).map((d) =>
+          d.kind === 'choice' ? (
+            <Select
+              key={`${kind}:${d.key}`}
+              name={`detail:${d.key}`}
+              label={d.label}
+              optional
+              options={[{ value: '', label: 'Not said' }, ...(d.values ?? []).map((v) => ({ value: v, label: v }))]}
+              defaultValue={values[d.key] ?? ''}
+              hint={d.hint}
+            />
+          ) : (
           <TextField
             key={`${kind}:${d.key}`}
             name={`detail:${d.key}`}
             label={d.label}
             optional
             maxLength={200}
-            hint={[d.hint, d.identity ? 'Says which one it is: no two entities share it' : ''].filter(Boolean).join('. ') || undefined}
+            hint={[d.hint, d.unit ? `A number, in ${d.unit}` : '', d.identity ? 'Says which one it is: no two entities share it' : ''].filter(Boolean).join('. ') || undefined}
             defaultValue={values[d.key] ?? ''}
           />
-        ))
+          ),
+        )
       : null;
 
   const dialogs = () => {

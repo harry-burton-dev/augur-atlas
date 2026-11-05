@@ -156,7 +156,8 @@ export const owlTurtle = (ontology: Ontology): Promise<string> => {
       writer.addQuad(quad(p, a, namedNode(`${OWL}DatatypeProperty`)));
       add(p, `${RDFS}label`, literal(`${d.label} (${t.label})`, 'en'));
       add(p, `${RDFS}domain`, s);
-      add(p, `${RDFS}range`, namedNode(`${XSD}${d.kind === 'number' ? 'decimal' : d.kind === 'date' ? 'date' : 'string'}`));
+      add(p, `${RDFS}range`, namedNode(`${XSD}${d.kind === 'number' || d.kind === 'quantity' ? 'decimal' : d.kind === 'date' ? 'date' : 'string'}`));
+      if (d.unit) add(p, `${RDFS}comment`, literal(`In ${d.unit}`, 'en'));
       if (d.identity) writer.addQuad(quad(p, a, namedNode(`${OWL}FunctionalProperty`)));
       if (d.packIri) add(p, `${SKOS}exactMatch`, namedNode(d.packIri));
     }

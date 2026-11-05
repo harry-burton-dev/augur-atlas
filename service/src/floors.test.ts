@@ -42,6 +42,17 @@ describe('ontology', () => {
     expect(checkDetail(locode, 'GB1OU')).toMatch(/five letters/);
   });
 
+  it('checks a quantity is a number in its unit, and keeps a choice as the ontology writes it', () => {
+    const tonnage = { key: 'gross-tonnage', label: 'Gross tonnage', kind: 'quantity' as const, identity: false, unit: 't' };
+    const status = { key: 'status', label: 'Status', kind: 'choice' as const, identity: false, values: ['In service', 'Laid up'] };
+    expect(normaliseDetail(tonnage, ' 12 500 ')).toBe('12500');
+    expect(checkDetail(tonnage, '12500')).toBeUndefined();
+    expect(checkDetail(tonnage, 'heavy')).toBe('Gross tonnage must be a number, in t.');
+    expect(normaliseDetail(status, 'laid up')).toBe('Laid up');
+    expect(checkDetail(status, 'Laid up')).toBeUndefined();
+    expect(checkDetail(status, 'Sunk')).toBe('Status must be one of: In service, Laid up.');
+  });
+
   it('writes the starter profile as plain inserts, parents first', () => {
     const sql = starterSql();
     expect(sql.indexOf("'vehicle'")).toBeLessThan(sql.indexOf("'vessel'"));
