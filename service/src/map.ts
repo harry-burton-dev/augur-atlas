@@ -69,8 +69,9 @@ export const mapRoutes = (app: FastifyInstance, atlas: Atlas, { tiles, attributi
     const file = await tileFile();
     if (!('size' in file)) return reply.code(404).send({ error: 'no-map', message: file.why });
     const range = byteRange(req.headers.range, file.size);
-    reply.header('accept-ranges', 'bytes').header('cache-control', 'private, max-age=3600').type('application/octet-stream');
+    reply.header('accept-ranges', 'bytes');
     if (range === null) return reply.code(416).header('content-range', `bytes */${file.size}`).send({ error: 'range', message: 'That part of the base map isn’t in the file.' });
+    reply.header('cache-control', 'private, max-age=3600').type('application/octet-stream');
     if (!range) return reply.header('content-length', file.size).send(createReadStream(tiles!));
     return reply
       .code(206)
