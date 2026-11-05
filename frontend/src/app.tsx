@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { DocumentRef } from '@augur/mfe-sdk';
+import type { DocumentRef, UnitRef } from '@augur/mfe-sdk';
 import {
   AppFrame,
   Button,
@@ -43,6 +43,8 @@ export interface AtlasAppProps {
   pickDocument?: () => Promise<DocumentRef>;
   /** Opens a source in the app that keeps it (the SDK's openDocument). */
   openDocument?: (ref: DocumentRef) => void;
+  /** Opens a linked library, folder or document in the app that keeps it (the SDK's openUnit). */
+  openUnit?: (ref: UnitRef) => void;
   /** Opens an intent in Mandate (its aim.open). */
   openIntent?: (id: string) => void;
   /** The person moved within the app. */
@@ -54,7 +56,7 @@ export interface AtlasAppProps {
  * floor the person is standing on. A floor shows what is kept on it and on the
  * floors above it; whatever can't be seen or done says why (explain, never hide).
  */
-export function AtlasApp({ api, floorName, floorKind, place: start, userId, pickDocument, openDocument, openIntent, onPlace }: AtlasAppProps) {
+export function AtlasApp({ api, floorName, floorKind, place: start, userId, pickDocument, openDocument, openUnit, openIntent, onPlace }: AtlasAppProps) {
   const [place, setPlace] = useState<Place>(start);
   const [ontology, setOntology] = useState<Ontology>();
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -307,7 +309,7 @@ export function AtlasApp({ api, floorName, floorKind, place: start, userId, pick
           limit={explain ? 0 : 8}
         />
         <Knowledge api={api} entity={e} ontology={ontology} pickDocument={pickDocument} onOpenEntity={(id) => move({ page: 'entity', id })} />
-        <UsedBy api={api} entity={e.id} onOpenIntent={openIntent} onOpenDocument={openDocument} />
+        <UsedBy api={api} entity={e.id} onOpenIntent={openIntent} onOpenDocument={openDocument} onOpenUnit={openUnit} />
       </>
     );
   };

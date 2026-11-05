@@ -47,6 +47,15 @@ describe.runIf(process.env.DATABASE_URL)('Following other apps', () => {
     expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().intents.map((i: { id: string }) => i.id)).toEqual(['int_2']);
   });
 
+  it('lists the records Artifacts links to an entity, by level, and forgets unlinked ones', async () => {
+    const bound = { topic: 'folio.record.entity-bound', workspace: { id: 't-ops', path: [] }, payload: { record: 'lib_1/d-9', library: 'lib_1', level: 'file', entity: tern.id, role: 'about', link: 'k1' } };
+    await handle(bound);
+    await handle(bound);
+    expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().records).toEqual([expect.objectContaining({ app: 'folio', id: 'lib_1/d-9', level: 'file', role: 'about', floorName: 'Ops planning' })]);
+    await handle({ ...bound, topic: 'folio.record.entity-unbound' });
+    expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().records).toEqual([]);
+  });
+
   it('retracts what was read from a withdrawn document, keeping it and saying so, and nothing new rests on it', async () => {
     const said = (await call('POST', `/v1/entities/${tern.id}/observations`, SAM_LEAD, { property: 'flag', value: 'Liberia', source: report('d-1'), accept: true })).json();
     expect((await call('GET', `/v1/entities/${tern.id}/used-by`, SAM_LEAD)).json().documents).toEqual([expect.objectContaining({ app: 'folio', id: 'd-1', title: 'Report d-1', observations: 1, withdrawn: false })]);

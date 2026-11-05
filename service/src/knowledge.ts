@@ -115,7 +115,8 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
 
   /**
    * What uses an entity, from here (spec, "used by"): intents bound to it, from
-   * Mandate's events, and documents what's known of it came from. Intents are
+   * Mandate's events, records linked to it, from Artifacts' events, and
+   * documents what's known of it came from. Intents are
    * ids and roles: the page asks Mandate to name them as the viewer, so one the
    * viewer can't open still shows, saying where it's kept.
    */
@@ -129,6 +130,7 @@ export const knowledgeRoutes = (app: FastifyInstance, atlas: Atlas) => {
     const teams = await atlas.people.teamNames([...new Set(uses.map((u) => u.workspace))]).catch(() => new Map<string, string>());
     return {
       intents: uses.filter((u) => u.app === 'mandate').map((u) => ({ app: u.app, id: u.id, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
+      records: uses.filter((u) => u.app === 'folio').map((u) => ({ app: u.app, id: u.id, level: u.kind, role: u.role, since: u.since, ...(teams.get(u.workspace) ? { floorName: teams.get(u.workspace) } : {}) })),
       documents,
     } satisfies EntityUses;
   });

@@ -226,7 +226,7 @@ describe('atlas', () => {
   const ENTITY_ROUTES = {
     '/api/atlas/v1/ontology': () => Response.json(ONTOLOGY),
     '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
-    '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], documents: [] }),
+    '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], records: [], documents: [] }),
     '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
   };
 
@@ -514,6 +514,7 @@ describe('used by', () => {
       { app: 'mandate', id: 'int_1', role: 'subject', since: '2026-10-27T00:00:00Z' },
       { app: 'mandate', id: 'int_2', role: 'resource', since: '2026-10-27T00:00:00Z', floorName: 'Ops planning' },
     ],
+    records: [{ app: 'folio', id: 'lib_1/d-9', level: 'file', role: 'about', since: '2026-10-27T00:00:00Z', floorName: 'Ops planning' }],
     documents: [{ app: 'folio', id: 'd-1', title: 'Port report', observations: 2, lastAt: '2026-10-27T00:00:00Z', withdrawn: true }],
   };
   const known = { ...KNOWN, noCurrentSource: 'Everything known of it here came from sources since withdrawn. It stays, with no current source.' };
@@ -536,6 +537,9 @@ describe('used by', () => {
     expect(el.textContent).toContain('It stays, with no current source.');
     await press(el.querySelector('.atlas-used-intents .quill-list-row'));
     expect(raise).toHaveBeenCalledWith({ type: 'aim.open', payload: { id: 'int_1' } });
+    expect(rowsOf(el.querySelector('.atlas-used-records'))).toEqual([expect.objectContaining({ title: 'A document', detail: expect.stringMatching(/^Linked as about · kept on Ops planning · linked/) })]);
+    await press(el.querySelector('.atlas-used-records .quill-list-row'));
+    expect(raise).toHaveBeenCalledWith(expect.objectContaining({ type: 'unit.open', payload: expect.objectContaining({ app: 'folio', id: 'lib_1/d-9', level: 'file' }) }));
   });
 
   it('says how many intents use it when Mandate can’t be asked', async () => {

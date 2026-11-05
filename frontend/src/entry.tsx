@@ -1,4 +1,4 @@
-import { ENTITY_EXPLAIN, ENTITY_OPEN, ENTITY_PICK, ENTITY_PROPOSE, defineMicroFrontend, isEntityRef, openDocument, pickDocument, type EntityPick, type EntityProposal, type Intent, type MountContext } from '@augur/mfe-sdk';
+import { ENTITY_EXPLAIN, ENTITY_OPEN, ENTITY_PICK, ENTITY_PROPOSE, defineMicroFrontend, isEntityRef, openDocument, openUnit, pickDocument, type EntityPick, type EntityProposal, type Intent, type MountContext } from '@augur/mfe-sdk';
 import { createRoot, type Root } from 'react-dom/client';
 import { AtlasApi, pathFor, placeFor, type Place } from './api.js';
 import { AtlasApp } from './app.js';
@@ -108,6 +108,7 @@ export default defineMicroFrontend({
         userId={ctx.user.id}
         pickDocument={() => pickDocument(ctx, { purpose: 'Where it was read' })}
         openDocument={(ref) => void openDocument(ctx, ref)}
+        openUnit={(ref) => void openUnit(ctx, ref)}
         openIntent={(id) => void ctx.raise({ type: AIM_OPEN, payload: { id } })}
         onPlace={moved}
       />,
