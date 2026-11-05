@@ -43,7 +43,7 @@ Under `/api/atlas/v1`, on the floor in `X-Workspace-Id`:
 | `GET /ontology/packs`, `GET /ontology/packs/:id` | The packs to adopt from, and a pack's terms, each saying where it's kept here once adopted. Both say whether the caller may change the ontology, and why not |
 | `POST /ontology/packs` | An admin loads a pack from OWL in Turtle (`turtle`, with `id`, `name`, `version`, `licence`); loading again under the same id replaces it |
 | `POST /ontology/adopt` | An admin adopts a pack term (`pack`, `iri`) as a kind, detail or kind of link, saying what the pack doesn't (its parent, how a link reads backwards) |
-| `POST /ontology/changes` | An admin adds or renames kinds, details and kinds of link: one new version |
+| `POST /ontology/changes` | An admin adds or renames kinds, details and kinds of link: one new version. `edit-type` also sets a kind's military symbol code (`symbol`, an APP-6 or MIL-STD-2525 code, ADR 0070), or takes it away with an empty one |
 | `GET /ontology/candidates` | Words sources asked for that the ontology hasn't got, most asked first; admins see them, everyone else how many wait |
 | `POST /ontology/candidates/decide` | An admin adopts a candidate (as the change given) or dismisses it, for every proposal that asked |
 | `GET /entities?q=&type=&limit=&offset=` | What shows from this floor, by name, other name or identity key; `type` takes its subtypes too. `seeing` names the floors it comes from |

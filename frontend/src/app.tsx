@@ -30,6 +30,7 @@ import { AtlasApi, detailText, entityLine, isPickedIntent, onEntity, typeTree, w
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
 import { DoesntFit } from './checks.js';
+import { KindSymbol } from './symbol.js';
 import { MightBeTheSame } from './alike.js';
 import { RaiseCard } from './raise.js';
 import { MergedNote } from './merged.js';
@@ -296,6 +297,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
     return (
       <>
         <PageHead trail={[{ id: 'entities', label: 'Everything here' }]} onTrail={() => move({ page: 'entities' })} eyebrow={kind?.label ?? e.type} heading={e.label} summary={e.description} actions={actions} onAction={(a) => run[a.id]?.()} />
+        <KindSymbol kind={kind} />
         {e.state === 'retired' ? <p className="atlas-note atlas-retired">Retired {relativeTime(e.updatedAt)}. Its id stays, so whatever points at it still says what it was.</p> : null}
         {e.state === 'merged' ? <MergedNote api={api} entity={e.id} onOpen={(id) => move({ page: 'entity', id })} /> : null}
         {e.aliases.length ? (

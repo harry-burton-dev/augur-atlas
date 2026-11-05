@@ -741,6 +741,54 @@ describe('ontology', () => {
     expect(el.querySelector('.atlas-doesnt-fit')!.textContent).toMatch(/Doesn’t fit the ontology.*IMO number doesn’t look right\..*In a fact recorded about it/);
   });
 
+  it('draws a kind’s military symbol where it has one, and won’t keep a code that can’t be drawn', async () => {
+    const SYMBOLS = { ...ONTOLOGY, types: ONTOLOGY.types.map((t) => (t.key === 'vessel' ? { ...t, symbol: 'SFSPCLFF--' } : t)) };
+    const changes: unknown[] = [];
+    const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/atlas/v1/ontology/changes') {
+        changes.push(await bodyOf(init));
+        return Response.json({ ontology: SYMBOLS });
+      }
+      if (path.startsWith('/api/atlas/v1/ontology/packs')) return Response.json({ ...PACKS, govern: true, why: undefined });
+      if (path.startsWith('/api/atlas/v1/ontology/candidates')) return Response.json({ govern: true, waiting: 0, candidates: [] });
+      if (path.startsWith('/api/atlas/v1/ontology/versions')) return Response.json({ versions: [] });
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(SYMBOLS);
+      if (path.startsWith('/api/atlas/v1/entities/ent_01/')) return new Response(null, { status: 404 });
+      if (path.startsWith('/api/atlas/v1/entities/ent_01')) return Response.json(TERN);
+      return new Response(null, { status: 404 });
+    });
+    const el = await open(ctx(fetch, '/ontology'));
+    await settle();
+    expect(el.querySelector('img.atlas-symbol')?.getAttribute('data-symbol')).toBe('SFSPCLFF--');
+    expect(el.textContent).toContain('Symbol SFSPCLFF--');
+    const row = [...el.querySelectorAll('.atlas-row')].find((r) => r.textContent?.startsWith('Vessel'))!;
+    await press(button('Change…', row));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const code = dialog.querySelector('input[name="symbol"]') as HTMLInputElement;
+    expect(code.value).toBe('SFSPCLFF--');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(code, 'nonsense12');
+      code.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await press(button('Save', dialog));
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('“nonsense12” isn’t a symbol code that can be drawn');
+    expect(changes).toEqual([]);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(code, '');
+      code.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await press(button('Save', document.querySelector('[role="dialog"]')!));
+    expect(changes).toEqual([{ changes: [{ op: 'edit-type', key: 'vessel', label: 'Vessel', plural: 'Vessels', symbol: '' }] }]);
+  });
+
+  it('shows the kind’s symbol on an entity’s page', async () => {
+    const SYMBOLS = { ...ONTOLOGY, types: ONTOLOGY.types.map((t) => (t.key === 'vessel' ? { ...t, symbol: 'SFSPCLFF--' } : t)) };
+    const el = await open(ctx(answering({ ...ENTITY_ROUTES_HERE, '/api/atlas/v1/ontology': () => Response.json(SYMBOLS) }), '/entities/ent_01'));
+    await settle();
+    expect(el.querySelector('.atlas-kind-symbol')!.textContent).toBe('Vessel · SFSPCLFF--');
+    expect(el.querySelector('.atlas-kind-symbol img')!.getAttribute('alt')).toBe('The military symbol for Vessel');
+  });
+
   it('opens a pack, showing what’s kept and offering the rest to admins only', async () => {
     const el = await open(ctx(answer(), '/ontology'));
     await press(tab(el, 'Packs'));
