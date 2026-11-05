@@ -137,7 +137,12 @@ const reachable = (open: Explored, hideDisputed: boolean) => {
  * opened from. Folds and hidden counts are small nodes of their own, so they can
  * be pressed. Returns the ids of nodes it added.
  */
-export const syncGraph = (graph: MultiDirectedGraph, open: Explored, ontology: Ontology | undefined, look: Look, { hideDisputed = false } = {}) => {
+/**
+ * Draws what is open into the graph. With a `lens` (the entities an intent
+ * binds), the centre and those keep their floor colours and everything else is
+ * dimmed, so what lies within the intent stands out without hiding the rest.
+ */
+export const syncGraph = (graph: MultiDirectedGraph, open: Explored, ontology: Ontology | undefined, look: Look, { hideDisputed = false, lens }: { hideDisputed?: boolean; lens?: ReadonlySet<string> } = {}) => {
   const shown = reachable(open, hideDisputed);
   const want = new Map<string, Record<string, unknown>>();
   const links: { key: string; from: string; to: string; attrs: Record<string, unknown> }[] = [];
@@ -151,7 +156,7 @@ export const syncGraph = (graph: MultiDirectedGraph, open: Explored, ontology: O
       color: floorColour(look, n.floorKind),
       kind: 'entity',
       fixed: centre,
-      ...(n.state !== 'active' ? { color: look.muted } : {}),
+      ...(n.state !== 'active' || (lens && !centre && !lens.has(id)) ? { color: look.muted } : {}),
     });
   }
   for (const e of shown.edges) {

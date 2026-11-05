@@ -98,12 +98,33 @@ export interface IntentName {
   canOpen: boolean;
 }
 
+/** An intent as `aim.pick` answers it (Mandate's IntentRef). */
+export interface PickedIntent {
+  id: string;
+  title: string;
+}
+
+/** What an intent binds, as Mandate tells this person: the explorer's lens. */
+export interface IntentLens {
+  intent: PickedIntent;
+  /** Entity ids bound to the intent and to its parts one level down, each once. */
+  entities: string[];
+}
+
+/** Whether an answer is an intent, as `aim.pick` gives one. */
+export const isPickedIntent = (x: unknown): x is PickedIntent => {
+  const r = x as { kind?: unknown; id?: unknown; title?: unknown } | null;
+  return !!r && r.kind === 'intent' && typeof r.id === 'string' && !!r.id && typeof r.title === 'string';
+};
+
 /** What Data Atlas is called and where its API is, from its manifest. */
 export interface AtlasNames {
   /** Its name as people read it, for "<name> isn't answering". */
   appName: string;
   /** Its API under the gateway, such as `/api/atlas/v1`. */
   base: string;
+  /** Its id from the manifest, which other apps' entity refs carry as `app`. */
+  appId?: string;
 }
 
 type Query = Record<string, string | number | string[] | undefined>;
@@ -307,6 +328,20 @@ export class AtlasApi {
     const res = await this.ctx.fetch('/api/mandate/v1/refs/resolve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
     if (!res.ok) throw new AppError('Mandate isn’t open to you on this floor, so the intents can’t be named.', res.status);
     return ((await res.json()) as { refs: IntentName[] }).refs;
+  }
+
+  /**
+   * Asks Mandate, as the person, what an intent binds: the entities on it and on
+   * its parts one level down, as far as they can see it (Mandate's context API).
+   */
+  async intentLens(id: string): Promise<IntentLens> {
+    const res = await this.ctx.fetch(`/api/mandate/v1/intents/${encodeURIComponent(id)}/context?depth=1`).catch(() => undefined);
+    if (!res) throw new AppError('Mandate isn’t answering, so what the intent binds can’t be read. Try again in a moment.', 0);
+    if (res.status === 403 || res.status === 404) throw new AppError('You can’t open that intent from this floor, so there’s nothing to explore within. Whoever holds it can share it with you.', res.status);
+    if (!res.ok) throw new AppError(`Mandate couldn’t say what the intent binds (it answered ${res.status}). Try again in a moment.`, res.status);
+    const body = (await res.json()) as { intent?: { id?: string; title?: string }; entities?: { ref?: { id?: string; app?: string } }[] };
+    const ids = (body.entities ?? []).filter((e) => e.ref?.id && (!e.ref.app || e.ref.app === this.names.appId)).map((e) => e.ref!.id!);
+    return { intent: { id: body.intent?.id ?? id, title: body.intent?.title ?? '' }, entities: [...new Set(ids)] };
   }
 
   /** The graph around some entities from this floor, a ring at a time. */

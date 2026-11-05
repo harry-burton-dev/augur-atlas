@@ -447,6 +447,65 @@ describe('explorer', () => {
     await press([...el.querySelectorAll('.atlas-fold')].find((b) => b.textContent === '1 hidden'));
     expect(el.querySelector('.atlas-why')!.textContent).toMatch(/Finance floor/);
   });
+
+  it('dims what lies outside an intent’s lens, keeping the centre and what it binds', () => {
+    const open = widen(undefined, AROUND_TERN, 'ent_01');
+    const look = { you: 'g', team: 'amber', org: 'blue', ink: 'i', muted: 'm', line: 'l', disputed: 'w', ground: 'd' };
+    const graph = new MultiDirectedGraph();
+    syncGraph(graph, open, ONTOLOGY, look, { lens: new Set(['ent_03']) });
+    expect(graph.getNodeAttribute('ent_01', 'color')).toBe('amber');
+    expect(graph.getNodeAttribute('ent_03', 'color')).toBe('blue');
+    expect(graph.getNodeAttribute('ent_02', 'color')).toBe('m');
+  });
+
+  it('explores within an intent Mandate picks, and says what of it can’t be shown', async () => {
+    const bodies: unknown[] = [];
+    const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
+      if (path.startsWith('/api/mandate/v1/intents/int_1/context?depth=1'))
+        return Response.json({
+          intent: { kind: 'intent', app: 'mandate', id: 'int_1', title: 'Keep the western route open' },
+          entities: [
+            { ref: { kind: 'entity', app: 'atlas', id: 'ent_03', type: 'vessel', label: 'Southern Tern' }, role: 'subject' },
+            { ref: { kind: 'entity', app: 'atlas', id: 'ent_09', type: 'organization', label: 'Ledger Co' }, role: 'subject' },
+            { ref: { kind: 'entity', app: 'atlas', id: 'ent_03', type: 'vessel', label: 'Southern Tern' }, role: 'asset' },
+          ],
+        });
+      if (path.startsWith('/api/atlas/v1/subgraph')) {
+        bodies.push(await bodyOf(init));
+        const seeds = (bodies.at(-1) as { seeds: unknown[] }).seeds;
+        return Response.json(seeds.length > 1 ? { ...AROUND_TERN, unseen: [{ ...AROUND_TERN.unseen[0], near: [] }] } : AROUND_TERN);
+      }
+      return new Response(null, { status: 404 });
+    });
+    const request = vi.fn(async () => ({ kind: 'intent', app: 'mandate', id: 'int_1', title: 'Keep the western route open' }));
+    const el = await open(ctx(fetch, '/explore/ent_01', { request: request as MountContext['request'] }));
+    await press(button('Within an intent…', el));
+    expect(request).toHaveBeenCalledWith({ type: 'aim.pick', payload: { purpose: 'Explore within it' } });
+    expect(bodies.at(-1)).toEqual({ seeds: [{ id: 'ent_01' }, { id: 'ent_03' }, { id: 'ent_09' }], depth: 1, limitPerNode: 12 });
+    expect(el.querySelector('.atlas-lens')!.textContent).toMatch(/Within Keep the western route open/);
+    expect(el.querySelector('.atlas-lens')!.textContent).toMatch(/1 of the 2 entities it binds shows here/);
+    expect(el.querySelector('.atlas-lens')!.textContent).toMatch(/1 can’t be seen from this floor: It’s kept on the Finance floor/);
+    expect(el.querySelector('.atlas-outside')!.textContent).toMatch(/Halden Shipping/);
+    expect(el.textContent).toMatch(/Southern Tern.*in the intent/);
+    await press(button('Show everything', el));
+    expect(bodies.at(-1)).toEqual({ seeds: [{ id: 'ent_01' }], depth: 1, limitPerNode: 12 });
+    expect(el.querySelector('.atlas-outside')).toBeNull();
+  });
+
+  it('says why no intent can be picked when nothing handles aim.pick here', async () => {
+    const fetch = vi.fn(async (path: string) => {
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
+      if (path.startsWith('/api/atlas/v1/subgraph')) return Response.json(AROUND_TERN);
+      return new Response(null, { status: 404 });
+    });
+    const refused = Object.assign(new Error('No app handles aim.pick'), { name: 'IntentError' });
+    const el = await open(ctx(fetch, '/explore/ent_01', { request: vi.fn(async () => Promise.reject(refused)) as MountContext['request'] }));
+    await press(button('Within an intent…', el));
+    const b = button('Within an intent…', el);
+    expect(shut(b)).toBe(true);
+    expect(reasonOf(b)).toMatch(/Mandate isn’t open to you on this floor/);
+  });
 });
 
 

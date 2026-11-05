@@ -26,7 +26,7 @@ import {
   type SelectOption,
 } from '@augur/app-kit';
 import manifest from '../../manifest.json';
-import { AtlasApi, entityLine, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type Place } from './api.js';
+import { AtlasApi, entityLine, isPickedIntent, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type PickedIntent, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
 import { MightBeTheSame } from './alike.js';
@@ -55,6 +55,8 @@ export interface AtlasAppProps {
   openUnit?: (ref: UnitRef) => void;
   /** Opens an intent in Mandate (its aim.open). */
   openIntent?: (id: string) => void;
+  /** Asks the person for an intent (Mandate's aim.pick), for the explorer's "Within an intent…". */
+  pickIntent?: () => Promise<PickedIntent>;
 }
 
 /**
@@ -62,7 +64,7 @@ export interface AtlasAppProps {
  * floor the person is standing on. A floor shows what is kept on it and on the
  * floors above it; whatever can't be seen or done says why (explain, never hide).
  */
-export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, openDocument, openUnit, openIntent }: AtlasAppProps) {
+export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, openDocument, openUnit, openIntent, pickIntent }: AtlasAppProps) {
   // Where the person is comes from the address, so a place can be shared and Back goes to the last one.
   const place = usePlace();
   const goTo = useGoTo();
@@ -418,7 +420,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
           <Button kind="ghost" size="sm" onPress={() => move({ page: 'entity', id })}>
             Back to its page
           </Button>
-          <Explorer api={api} ontology={ontology} centre={id} floorName={floorName} onOpenEntity={(to) => move({ page: 'entity', id: to })} onExplore={(to) => move({ page: 'explore', id: to })} />
+          <Explorer api={api} ontology={ontology} centre={id} floorName={floorName} onOpenEntity={(to) => move({ page: 'entity', id: to })} onExplore={(to) => move({ page: 'explore', id: to })} pickIntent={pickIntent} />
         </>
       );
       break;
@@ -524,9 +526,18 @@ function useGoTo() {
 
 /** Mandate's intent for opening an intent (docs/mandate.md). */
 const AIM_OPEN = 'aim.open';
+/** Mandate's intent for picking one: it answers with an intent ref. */
+const AIM_PICK = 'aim.pick';
+
+/** Asks whichever app handles `aim.pick` for an intent; rejects as the SDK's request does, or when the answer isn't one. */
+export const pickIntentWith = async (ctx: Pick<MountContext, 'request'>, purpose: string): Promise<PickedIntent> => {
+  const answer = await ctx.request<unknown>({ type: AIM_PICK, payload: { purpose } });
+  if (!isPickedIntent(answer)) throw new Error('The answer wasn’t an intent, so there’s nothing to explore within.');
+  return { id: answer.id, title: answer.title };
+};
 
 /** The service, through the gateway at Data Atlas's own route, named as its manifest names it. */
-export const apiFor = (ctx: MountContext) => new AtlasApi(ctx, { appName: manifest.name, base: `/api/${manifest.id}/v1` });
+export const apiFor = (ctx: MountContext) => new AtlasApi(ctx, { appName: manifest.name, base: `/api/${manifest.id}/v1`, appId: manifest.id });
 
 /** Data Atlas as the shell mounts it: the app on the floor the person stands on. */
 export function App({ ctx }: AppProps<MountContext>) {
@@ -543,6 +554,7 @@ export function App({ ctx }: AppProps<MountContext>) {
       openDocument={(ref) => void openDocument(c, ref)}
       openUnit={(ref) => void openUnit(c, ref)}
       openIntent={(id) => void c.raise({ type: AIM_OPEN, payload: { id } })}
+      pickIntent={() => pickIntentWith(c, 'Explore within it')}
     />
   );
 }
