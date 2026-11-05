@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@augur/app-tools':
-        specifier: npm:@harry-burton-dev/augur-app-tools@^0.4.0
-        version: '@harry-burton-dev/augur-app-tools@0.4.0(fastify@5.12.8)'
+        specifier: npm:@harry-burton-dev/augur-app-tools@^0.4.1
+        version: '@harry-burton-dev/augur-app-tools@0.4.1(fastify@5.12.8)'
       '@changesets/cli':
         specifier: ^2.31.1
         version: 2.31.1(@types/node@22.20.5)
@@ -47,6 +47,9 @@ importers:
       graphology-layout-forceatlas2:
         specifier: ^0.10.1
         version: 0.10.1(graphology-types@0.24.8)
+      milsymbol:
+        specifier: ^3.0.4
+        version: 3.0.5
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -531,8 +534,8 @@ packages:
       react: ^19.3.1
       react-dom: ^19.3.1
 
-  '@harry-burton-dev/augur-app-tools@0.4.0':
-    resolution: {integrity: sha512-jsZBYAAKoJR+MWjg2KVkYZDBlJSwsck2Ks65OZSQu4RsL8/T2zTdK1z4Pgse0HFY5PWv7fUPDTn91dwHhwHkLw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-tools/0.4.0/3ee30e4a0e123bf81a567ec7883cc93c528f2880}
+  '@harry-burton-dev/augur-app-tools@0.4.1':
+    resolution: {integrity: sha512-IV+rZ0rXOdsaOCXOJxVK0SN5EUXldC0L51XdgjmnNs7y4lAPiA9r5+DubJFEwIdFehI5ENxbJWLiAU5HOtHWpg==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-tools/0.4.1/d19501d6017131ee9808296042fc0d1736ae802e}
     hasBin: true
 
   '@harry-burton-dev/augur-kit-common@0.7.0':
@@ -554,8 +557,8 @@ packages:
     peerDependencies:
       fastify: ^5.6.0
 
-  '@harry-burton-dev/augur-service-kit@0.15.0':
-    resolution: {integrity: sha512-60yQOfDJ1u2Hwm0RfasME9gjWUDVUUrucUaM1h0e1z4dIZa6fcGQAf8b9qIVKamqnISo2wAutfKinenM2Rx3pw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-service-kit/0.15.0/54c02c187e176b74bf08544b8248ac788e1e4228}
+  '@harry-burton-dev/augur-service-kit@0.16.0':
+    resolution: {integrity: sha512-Pl+QdJ42XVpRAzNCinNwMgZQ/pC2yq0YyO+QqX60QnqM0efUB385xJJcW8rBlEfNCprbIbfyjvAHk2Tey5O9Ew==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-service-kit/0.16.0/8066494941543d63fb74ceec9afb61e16242514d}
     peerDependencies:
       fastify: ^5.6.0
 
@@ -2278,6 +2281,9 @@ packages:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==}
     engines: {node: '>=8.6'}
 
+  milsymbol@3.0.5:
+    resolution: {integrity: sha512-LKEj0wnHIWwpdazKxwFie+h5NIEz9ezD0BoHaZXceMh3sbhGL8oMUQU7gjoVorYdKtdWaQTYpUEMxaorX/2SjQ==}
+
   minimatch@10.2.6:
     resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
     engines: {node: 18 || 20 || >=22}
@@ -3551,9 +3557,9 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  '@harry-burton-dev/augur-app-tools@0.4.0(fastify@5.12.8)':
+  '@harry-burton-dev/augur-app-tools@0.4.1(fastify@5.12.8)':
     dependencies:
-      '@augur/service-kit': '@harry-burton-dev/augur-service-kit@0.15.0(fastify@5.12.8)'
+      '@augur/service-kit': '@harry-burton-dev/augur-service-kit@0.16.0(fastify@5.12.8)'
       semver: 7.8.6
     transitivePeerDependencies:
       - '@dbos-inc/dbos-enterprise'
@@ -3597,7 +3603,7 @@ snapshots:
       - pg-native
       - supports-color
 
-  '@harry-burton-dev/augur-service-kit@0.15.0(fastify@5.12.8)':
+  '@harry-burton-dev/augur-service-kit@0.16.0(fastify@5.12.8)':
     dependencies:
       '@dbos-inc/dbos-sdk': 5.4.0
       '@opentelemetry/api': 1.10.0
@@ -5400,6 +5406,8 @@ snapshots:
     dependencies:
       braces: 3.0.3
       picomatch: 2.3.2
+
+  milsymbol@3.0.5: {}
 
   minimatch@10.2.6:
     dependencies:

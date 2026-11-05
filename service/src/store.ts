@@ -389,6 +389,12 @@ export const migrations: { id: string; sql: string }[] = [
         check (kind in ('text', 'number', 'date', 'quantity', 'choice', 'place')) not valid;
       alter table atlas.ontology_details add column unit text, add column choices text[];`,
   },
+  {
+    id: '012_kind_symbols',
+    sql: `
+      -- A kind may carry a military symbol code (ADR 0070), drawn by the frontend in place of its icon.
+      alter table atlas.ontology_types add column symbol text;`,
+  },
 ];
 
 /**
@@ -479,14 +485,17 @@ const applyChange = async (client: pg.PoolClient, c: OntologyChange) => {
     case 'add-type': {
       const t = c.type;
       await client.query(
-        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, sort)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
-        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null],
+        `insert into atlas.ontology_types (key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol, sort)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (select coalesce(max(sort), 0) + 1 from atlas.ontology_types))`,
+        [t.key, t.parent ?? null, t.label, t.plural, t.abstract, t.icon, t.pack, t.packTerm, t.packIri ?? null, t.symbol || null],
       );
       return;
     }
     case 'edit-type':
-      await client.query('update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon) where key = $1', [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null]);
+      await client.query(
+        "update atlas.ontology_types set label = coalesce($2, label), plural = coalesce($3, plural), icon = coalesce($4, icon), symbol = case when $5::text is null then symbol else nullif($5, '') end where key = $1",
+        [c.key, c.label ?? null, c.plural ?? null, c.icon ?? null, c.symbol ?? null],
+      );
       return;
     case 'add-detail': {
       const d = c.detail;
@@ -818,8 +827,8 @@ export class PgAtlasStore {
   async ontology(): Promise<Ontology> {
     const [version, types, details] = await Promise.all([
       this.pool.query<{ version: number }>('select coalesce(max(version), 0) as version from atlas.ontology_versions'),
-      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null }>(
-        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri from atlas.ontology_types order by sort, key',
+      this.pool.query<{ key: string; parent: string | null; label: string; plural: string; abstract: boolean; icon: string; pack: string; pack_term: string; pack_iri: string | null; symbol: string | null }>(
+        'select key, parent, label, plural, abstract, icon, pack, pack_term, pack_iri, symbol from atlas.ontology_types order by sort, key',
       ),
       this.pool.query<{ type: string; key: string; label: string; kind: DetailDef['kind']; identity: boolean; pattern: string | null; hint: string | null; on_entity: boolean; pack_iri: string | null; unit: string | null; choices: string[] | null }>(
         'select type, key, label, kind, identity, pattern, hint, on_entity, pack_iri, unit, choices from atlas.ontology_details order by type, sort, key',
@@ -838,6 +847,7 @@ export class PgAtlasStore {
           ...(t.parent ? { parent: t.parent } : {}),
           abstract: t.abstract,
           icon: t.icon,
+          ...(t.symbol ? { symbol: t.symbol } : {}),
           pack: t.pack,
           packTerm: t.pack_term,
           ...(t.pack_iri ? { packIri: t.pack_iri } : {}),

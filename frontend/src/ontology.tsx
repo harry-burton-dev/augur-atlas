@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Dialog, DropZone, Icon, PageHead, Select, State, Tag, TextField, relativeTime, type DialogSubmit, type IconName, type SelectOption } from '@augur/app-kit';
+import { Button, Dialog, DropZone, Icon, PageHead, Select, State, Tag, TextField, relativeTime, type DialogSubmit, type SelectOption } from '@augur/app-kit';
 import {
   keyFrom,
   pluralOf,
@@ -16,6 +16,7 @@ import {
   type TermCandidate,
 } from './api.js';
 import { KeptChecks } from './checks.js';
+import { KindMark, symbolProblem } from './symbol.js';
 
 type Tab = 'kinds' | 'links' | 'asked' | 'packs' | 'checks' | 'history';
 
@@ -231,11 +232,16 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
   const submitRename: DialogSubmit = async (values) => {
     const e = editing;
     if (!e) return false as const;
+    const symbol = e.what === 'type' ? (values.symbol ?? '').trim() : '';
+    if (symbol) {
+      const problem = await symbolProblem(symbol);
+      if (problem) throw new Error(problem);
+    }
     const change: OntologyChange =
-      e.what === 'type' ? { op: 'edit-type', key: e.key, label: values.label.trim(), plural: values.plural.trim() } : { op: 'edit-relation', key: e.key, label: values.label.trim(), inverse: values.inverse.trim() };
+      e.what === 'type' ? { op: 'edit-type', key: e.key, label: values.label.trim(), plural: values.plural.trim(), symbol } : { op: 'edit-relation', key: e.key, label: values.label.trim(), inverse: values.inverse.trim() };
     const done = await api.changeOntology([change]);
     setEditing(undefined);
-    await changed(done.ontology, 'Renamed. What’s kept under it is the same.');
+    await changed(done.ontology, e.what === 'type' ? 'Changed. What’s kept under it is the same.' : 'Renamed. What’s kept under it is the same.');
   };
 
   const submitPack: DialogSubmit = async (values) => {
@@ -278,13 +284,13 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       <ul className="atlas-rows">
         {typeTree(o).map(({ type: t, depth }) => (
           <li key={t.key} className="atlas-row" style={{ paddingInlineStart: `calc(${depth} * var(--space-5))` }}>
-            <Icon name={t.icon as IconName} size={16} />
+            <KindMark kind={t} size={16} />
             <div className="atlas-what">
               <span className="atlas-name">
                 {t.label}
                 {t.abstract ? <span className="atlas-note"> a heading only</span> : null}
               </span>
-              <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`].join(' · ')}</span>
+              <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`, ...(t.symbol ? [`Symbol ${t.symbol}`] : [])].join(' · ')}</span>
               {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
             </div>
             {govern ? (
@@ -293,7 +299,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
                   Add a detail
                 </Button>
                 <Button kind="ghost" size="sm" onPress={() => setEditing({ what: 'type', key: t.key })}>
-                  Rename
+                  Change…
                 </Button>
               </div>
             ) : null}
@@ -509,15 +515,25 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
           open
           onClose={() => setEditing(undefined)}
           eyebrow="Ontology"
-          heading={`Rename ${t?.label ?? r?.label ?? e.key}`}
-          summary="Only the words change: its key, and everything kept under it, stay as they are."
-          actionLabel="Rename"
-          busyLabel="Renaming…"
+          heading={t ? `Change ${t.label}` : `Rename ${r?.label ?? e.key}`}
+          summary={t ? 'Only its words and how it’s drawn change: its key, and everything kept under it, stay as they are.' : 'Only the words change: its key, and everything kept under it, stay as they are.'}
+          actionLabel={t ? 'Save' : 'Rename'}
+          busyLabel={t ? 'Saving…' : 'Renaming…'}
           onSubmit={submitRename}
           fields={
             <>
               <TextField name="label" label="Name" required maxLength={80} defaultValue={t?.label ?? r?.label ?? ''} />
               {t ? <TextField name="plural" label="Plural" required maxLength={80} defaultValue={t.plural} /> : null}
+              {t ? (
+                <TextField
+                  name="symbol"
+                  label="Military symbol"
+                  optional
+                  maxLength={30}
+                  defaultValue={t.symbol ?? ''}
+                  hint="An APP-6 or MIL-STD-2525 symbol code, drawn in place of its icon. Leave it empty to keep the icon."
+                />
+              ) : null}
               {r ? <TextField name="inverse" label="Read backwards" required maxLength={80} defaultValue={r.inverse} /> : null}
             </>
           }

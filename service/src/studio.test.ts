@@ -77,6 +77,13 @@ describe('packs', () => {
     expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: true, values: ['In service', 'Laid up'] })).toMatch(/can’t say which thing it is/);
     expect(add({ key: 'status', label: 'Status', kind: 'choice', identity: false, values: ['In service', 'Laid up'] })).toBeUndefined();
   });
+
+  it('checks a military symbol code’s form, and lets one be taken away', () => {
+    const o: Ontology = { version: 1, types: [{ key: 'vessel', label: 'Vessel', plural: 'Vessels', abstract: false, icon: 'vessel', pack: 'cco', packTerm: 'Watercraft', details: [] }], relations: [] };
+    expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', symbol: 'SFSPCLFF--' }])).toBeUndefined();
+    expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', symbol: '<svg>' }])).toMatch(/APP-6 or MIL-STD-2525 code/);
+    expect(checkChanges(o, [{ op: 'edit-type', key: 'vessel', symbol: '' }])).toBeUndefined();
+  });
 });
 
 describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
@@ -184,5 +191,15 @@ describe.runIf(process.env.DATABASE_URL)('Ontology studio', () => {
         expect.objectContaining({ key: 'status', kind: 'choice', values: ['In service', 'Laid up'] }),
       ]),
     );
+  });
+
+  it('keeps a kind’s military symbol code until it’s taken away', async () => {
+    const vessel = async () => (await call('GET', '/v1/ontology', SAM)).json().types.find((t: { key: string }) => t.key === 'vessel');
+    expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'vessel', symbol: 'SFSPCLFF--' }] })).statusCode).toBe(200);
+    expect(await vessel()).toMatchObject({ symbol: 'SFSPCLFF--', icon: 'vessel' });
+    expect((await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'vessel', label: 'Vessel' }] })).statusCode).toBe(200);
+    expect((await vessel()).symbol).toBe('SFSPCLFF--');
+    await call('POST', '/v1/ontology/changes', ADMIN, { changes: [{ op: 'edit-type', key: 'vessel', symbol: '' }] });
+    expect((await vessel()).symbol).toBeUndefined();
   });
 });
