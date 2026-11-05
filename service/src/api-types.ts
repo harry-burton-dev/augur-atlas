@@ -13,9 +13,9 @@
 
 /**
  * What a detail holds: words, a number, a date, a quantity (a number in the
- * detail's `unit`), one of a few `values` (a choice), or a place (written as
- * words for now; coordinates come with the map). Links to other entities are
- * relations, not details.
+ * detail's `unit`), one of a few `values` (a choice), or a place (words, or a
+ * point the map can draw: latitude, longitude in decimal degrees, "57.70, 11.97").
+ * Links to other entities are relations, not details.
  */
 export type DetailKind = 'text' | 'number' | 'date' | 'quantity' | 'choice' | 'place';
 

@@ -11,6 +11,7 @@
  */
 
 import type { DetailDef, Ontology, RelationDef, TypeDef } from './api-types.ts';
+import { formatPoint, parsePoint, pointProblem } from './points.ts';
 
 /** The ontology's wire types are written once, in api-types.ts. */
 export type { DetailDef, DetailKind, Ontology, OntologyChange, RelationDef, TypeDef } from './api-types.ts';
@@ -189,6 +190,10 @@ export const checkDetail = (detail: DetailDef, value: string): string | undefine
   if (detail.kind === 'quantity' && !Number.isFinite(Number(value))) return `${detail.label} must be a number${detail.unit ? `, in ${detail.unit}` : ''}.`;
   if (detail.kind === 'date' && Number.isNaN(Date.parse(value))) return `${detail.label} must be a date.`;
   if (detail.kind === 'choice' && !(detail.values ?? []).includes(value)) return `${detail.label} must be one of: ${(detail.values ?? []).join(', ')}.`;
+  if (detail.kind === 'place') {
+    const problem = pointProblem(detail.label, value);
+    if (problem) return problem;
+  }
   if (detail.pattern && !new RegExp(`^(?:${detail.pattern})$`).test(value)) return detail.hint ? `${detail.label} doesn’t look right: ${detail.hint.toLowerCase()}.` : `${detail.label} doesn’t look right.`;
   return undefined;
 };
@@ -202,6 +207,11 @@ export const normaliseDetail = (detail: DetailDef, value: string) => {
   // A choice is kept as its value is written in the ontology, whatever its case.
   if (detail.kind === 'choice') return (detail.values ?? []).find((v) => v.toLowerCase() === value.trim().toLowerCase()) ?? value.trim();
   if (detail.kind === 'quantity' || detail.kind === 'number') return value.trim().replace(/\s+/g, '');
+  // A place written as a point is kept as one, so "57.700,11.97" and "57.7, 11.970" are the same place.
+  if (detail.kind === 'place') {
+    const point = parsePoint(value);
+    if (point) return formatPoint(point);
+  }
   if (!detail.pattern) return value.trim().replace(/\s+/g, ' ');
   const bare = value.replace(/\s+/g, '');
   return /[A-Z]/.test(detail.pattern) ? bare.toUpperCase() : bare;
