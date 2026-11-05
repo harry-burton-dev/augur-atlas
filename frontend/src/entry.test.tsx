@@ -806,6 +806,7 @@ describe('used by', () => {
       { app: 'mandate', id: 'int_2', role: 'resource', since: '2026-10-27T00:00:00Z', floorName: 'Ops planning' },
     ],
     records: [{ app: 'folio', id: 'lib_1/d-9', level: 'file', role: 'about', since: '2026-10-27T00:00:00Z', floorName: 'Ops planning' }],
+    others: [{ app: 'claims', id: 'clm_1', kind: 'claim', role: 'related', since: '2026-10-27T00:00:00Z' }],
     documents: [{ app: 'folio', id: 'd-1', title: 'Port report', observations: 2, lastAt: '2026-10-27T00:00:00Z', withdrawn: true }],
   };
   const known = { ...KNOWN, noCurrentSource: 'Everything known of it here came from sources since withdrawn. It stays, with no current source.' };
@@ -828,7 +829,11 @@ describe('used by', () => {
     expect(el.textContent).toContain('It stays, with no current source.');
     await press(el.querySelector('.atlas-used-intents .quill-list-row'));
     expect(raise).toHaveBeenCalledWith({ type: 'aim.open', payload: { id: 'int_1' } });
-    expect(rowsOf(el.querySelector('.atlas-used-records'))).toEqual([expect.objectContaining({ title: 'A document', detail: expect.stringMatching(/^Linked as about · kept on Ops planning · linked/) })]);
+    expect(rowsOf(el.querySelector('.atlas-used-records'))).toEqual([
+      expect.objectContaining({ title: 'A document', detail: expect.stringMatching(/^Linked as about · kept on Ops planning · linked/) }),
+      // Another app's thing stays in sight, saying where it opens.
+      expect.objectContaining({ title: 'A claim', detail: expect.stringContaining('open it from the app that keeps it'), disabled: true }),
+    ]);
     await press(el.querySelector('.atlas-used-records .quill-list-row'));
     expect(raise).toHaveBeenCalledWith(expect.objectContaining({ type: 'unit.open', payload: expect.objectContaining({ app: 'folio', id: 'lib_1/d-9', level: 'file' }) }));
   });

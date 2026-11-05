@@ -1,6 +1,6 @@
-import { appCredentialsFromEnv, appStorageFromEnv, commonSettings, embedTexts, followEvents, loadConfigOrExit, outboxRelay, startAppService } from '@augur/service-kit';
+import { appCredentialsFromEnv, appStorageFromEnv, commonSettings, embedTexts, followEvents, loadConfigOrExit, outboxRelay, registryBindingApps, startAppService } from '@augur/service-kit';
 import { buildApp } from './app.ts';
-import { FOLLOWED, follower } from './follow.ts';
+import { bindings, followBindings, retractions, RETRACTIONS } from './follow.ts';
 import { manifest } from './manifest.ts';
 import { PgAtlasStore } from './store.ts';
 
@@ -38,15 +38,32 @@ const app = await startAppService({ manifest, buildApp: () => buildApp({ store, 
 const { EVENTS_URL } = process.env;
 if (EVENTS_URL && credentials) {
   outboxRelay({ pool: PgAtlasStore.outboxPool(databaseUrl), eventsUrl: EVENTS_URL, credentials, onError: (err) => app.log.error({ err: (err as Error).message }, 'could not send events') }).start();
-  // Follow Mandate's bindings (used by) and Artifacts' withdrawals (retraction), from where it left off.
+  const onError = (err: unknown) => app.log.error({ err: (err as Error).message }, 'could not follow events');
+  // Follow Artifacts' withdrawals (retraction), from where it left off.
   followEvents({
     eventsUrl: EVENTS_URL,
     credentials,
-    topics: FOLLOWED,
+    topics: RETRACTIONS,
     cursor: { load: () => store.eventCursor(), save: (seq) => store.saveEventCursor(seq) },
-    handle: follower(store),
-    onError: (err) => app.log.error({ err: (err as Error).message }, 'could not follow events'),
+    handle: retractions(store),
+    onError,
   }).start();
+  // Follow every app that binds its things to entities (used by), as the registry lists them (ADR 0066),
+  // each app and type from its own place, so one listed later is read from its start.
+  const { REGISTRY_URL } = process.env;
+  if (REGISTRY_URL) {
+    const handle = bindings(store);
+    followBindings({
+      apps: registryBindingApps({ registryUrl: REGISTRY_URL, credentials }),
+      follow: ({ key, topics }) => {
+        const f = followEvents({ eventsUrl: EVENTS_URL, credentials, topics, cursor: { load: () => store.bindingCursor(key), save: (seq) => store.saveBindingCursor(key, seq) }, handle, onError });
+        f.start();
+        app.log.info({ stream: key }, 'following entity bindings');
+        return f;
+      },
+      onError: (err) => app.log.error({ err: (err as Error).message }, 'could not ask the registry which apps bind to entities'),
+    }).start();
+  } else app.log.info('REGISTRY_URL is not set, so Data Atlas follows no app’s entity bindings and “used by” lists none.');
 } else {
   app.log.info('EVENTS_URL or the app’s sign-in is not set, so Data Atlas’s events wait in its outbox, and it follows no other app’s.');
 }
