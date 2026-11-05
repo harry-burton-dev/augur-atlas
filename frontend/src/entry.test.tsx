@@ -575,6 +575,36 @@ describe('triage', () => {
     expect(decided).toEqual({ as: 'keep' });
   });
 
+  it('lets a lead say two matches are the same, merging one under the other, then offers the one that stays', async () => {
+    const SOUTH = { entity: { kind: 'entity' as const, id: 'ent_03', type: 'vessel', label: 'N. Tern', state: 'active' as const, floorName: 'Maritime desk' }, why: 'name' as const };
+    const TWO: ProposalView = { ...PROPOSAL, mentions: [{ ...PROPOSAL.mentions[0], matches: [...PROPOSAL.mentions[0].matches, SOUTH] }] };
+    let merged: { path: string; body: unknown } | undefined;
+    const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/atlas/v1/ontology')) return Response.json(ONTOLOGY);
+      if (path === '/api/atlas/v1/entities/ent_03/merge') {
+        merged = { path, body: await bodyOf(init) };
+        return Response.json({ id: 'mrg_1', junior: 'ent_03', senior: 'ent_01', floor: 'tree:t-mar', why: 'x', cites: [], decidedBy: 'u1' });
+      }
+      if (path.startsWith('/api/atlas/v1/proposals/prp_1')) return Response.json(merged ? PROPOSAL : TWO);
+      return new Response(null, { status: 404 });
+    });
+    const el = await open(ctx(fetch, '/triage/prp_1'));
+    await act(async () => button('These two are the same…', el)!.click());
+    await settle();
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toMatch(/These are the same thing\?/);
+    const why = dialog.querySelector('textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(why, 'The same hull, misspelt');
+      why.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button('Merge', dialog)!.click());
+    await settle();
+    expect(merged).toEqual({ path: '/api/atlas/v1/entities/ent_03/merge', body: { into: 'ent_01', why: 'The same hull, misspelt' } });
+    expect(button('These two are the same…', el)).toBeUndefined();
+    expect(button('It’s Northern Tern', el)).toBeDefined();
+  });
+
   it('shows a mention in its passage with what it might be, and links it to the one chosen', async () => {
     let decided: unknown;
     const fetch = vi.fn(async (path: string, init?: RequestInit) => {
