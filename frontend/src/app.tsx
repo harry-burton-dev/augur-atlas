@@ -29,6 +29,7 @@ import manifest from '../../manifest.json';
 import { AtlasApi, detailText, entityLine, isPickedIntent, onEntity, typeTree, whyShown, type Entity, type EntityFields, type Ontology, type PickedIntent, type Place } from './api.js';
 import { Explorer } from './explorer.js';
 import { Knowledge } from './knowledge.js';
+import { DoesntFit } from './checks.js';
 import { MightBeTheSame } from './alike.js';
 import { RaiseCard } from './raise.js';
 import { MergedNote } from './merged.js';
@@ -318,6 +319,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
         />
         <Knowledge api={api} entity={e} ontology={ontology} pickDocument={pickDocument} onOpenEntity={(id) => move({ page: 'entity', id })} />
         <UsedBy api={api} entity={e.id} onOpenIntent={openIntent} onOpenDocument={openDocument} onOpenUnit={openUnit} />
+        {e.state === 'active' ? <DoesntFit key={`fit:${e.id}`} api={api} entity={e} /> : null}
         {e.state === 'active' ? <RaiseCard key={`raise:${e.id}`} api={api} entity={e} /> : null}
         {e.state === 'active' ? <MightBeTheSame key={e.id} api={api} entity={e} onOpenEntity={(id) => move({ page: 'entity', id })} onMerged={() => void go(place)} /> : null}
       </>
@@ -442,7 +444,7 @@ export function AtlasApp({ api, floorName, floorKind, userId, pickDocument, open
       main = <Triage api={api} ontology={ontology} place={place} userId={userId} onMove={move} onOpenDocument={openDocument} />;
       break;
     case 'ontology':
-      main = <OntologyView api={api} ontology={ontology} onChange={keep} />;
+      main = <OntologyView api={api} ontology={ontology} onChange={keep} onOpenEntity={(id) => move({ page: 'entity', id })} />;
       break;
     default:
       main = listPage();

@@ -831,3 +831,40 @@ export interface Problem {
   error: string;
   message: string;
 }
+
+/**
+ * Something kept that doesn't fit the ontology's shapes (ADR 0062): a detail
+ * whose value won't do, or a link to something it may not link to. Found by
+ * checking what's kept against SHACL shapes written from the ontology.
+ */
+export interface CheckFinding {
+  entity: string;
+  /** The entity's name, so a list of findings reads without opening each. */
+  label: string;
+  /** The detail or kind of link it's about, by key. */
+  property: string;
+  /** What's wrong, in words a person can act on. */
+  message: string;
+  /** The fact it was found in, when it wasn't typed on the entity itself. */
+  fact?: string;
+  /** The SHACL constraint it breaks, by its local name (`PatternConstraintComponent`). */
+  constraint: string;
+}
+
+/** `GET /entities/:id/check`. */
+export interface EntityCheck {
+  entity: string;
+  /** The ontology version it was checked against. */
+  version: number;
+  findings: CheckFinding[];
+}
+
+/** `GET /checks`: one page of the entities in sight, checked. */
+export interface FloorCheck {
+  version: number;
+  /** How many entities this page checked, from `offset`, of `total` in sight. */
+  checked: number;
+  offset: number;
+  total: number;
+  findings: CheckFinding[];
+}

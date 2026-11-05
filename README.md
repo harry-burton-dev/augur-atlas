@@ -37,6 +37,9 @@ Under `/api/atlas/v1`, on the floor in `X-Workspace-Id`:
 | `GET /entities/:id/used-by` | What uses an entity from here: intents bound to it (from Mandate's events, ids and roles, named by Mandate as the viewer) and the documents what's known of it came from |
 | `GET /ontology/versions` | Every version: who made it, why, and the changes in it |
 | `GET /ontology/owl` | The ontology as OWL in Turtle, each kind and link saying which pack term it is (`skos:exactMatch`) |
+| `GET /ontology/shacl` | The ontology as SHACL shapes in Turtle (ADR 0062): a node shape for each kind, a property shape for each detail (its datatype, pattern, values) and kind of link (the kinds it may reach) |
+| `GET /entities/:id/check` | What about an entity doesn't fit those shapes, as it stands now from here: each finding names the detail or link, says what's wrong in words, and the fact it was found in when there is one |
+| `GET /checks?type&limit&offset` | The same for a page of the entities in sight (`limit` up to 500), with how many there are to check |
 | `GET /ontology/packs`, `GET /ontology/packs/:id` | The packs to adopt from, and a pack's terms, each saying where it's kept here once adopted. Both say whether the caller may change the ontology, and why not |
 | `POST /ontology/packs` | An admin loads a pack from OWL in Turtle (`turtle`, with `id`, `name`, `version`, `licence`); loading again under the same id replaces it |
 | `POST /ontology/adopt` | An admin adopts a pack term (`pack`, `iri`) as a kind, detail or kind of link, saying what the pack doesn't (its parent, how a link reads backwards) |

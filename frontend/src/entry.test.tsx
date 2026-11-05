@@ -689,6 +689,12 @@ describe('triage', () => {
 });
 
 describe('ontology', () => {
+  const ENTITY_ROUTES_HERE = {
+    '/api/atlas/v1/entities/ent_01/knowledge': () => Response.json(KNOWN),
+    '/api/atlas/v1/entities/ent_01/used-by': () => Response.json({ intents: [], records: [], documents: [] }),
+    '/api/atlas/v1/entities/ent_01/check': () => Response.json({ entity: 'ent_01', version: 3, findings: [{ entity: 'ent_01', label: 'Northern Tern', property: 'imo', message: 'IMO number doesn’t look right.', fact: 'fct_1', constraint: 'PatternConstraintComponent' }] }),
+    '/api/atlas/v1/entities/ent_01': () => Response.json(TERN),
+  };
   const PACKS = { govern: false, why: 'Only admins change the ontology for now. You can read it, its packs and its history.', packs: [{ id: 'cco', name: 'Common Core Ontologies (profile)', version: '1.5', licence: 'BSD-3-Clause', source: 'https://github.com/CommonCoreOntology/CommonCoreOntologies', terms: 21, builtIn: true, loadedAt: '2026-10-27T00:00:00Z' }] };
   const answer = (more: Record<string, () => Response> = {}) =>
     answering({
@@ -717,6 +723,22 @@ describe('ontology', () => {
     expect(reasonOf(add)).toContain('Only admins');
     await press(tab(el, 'Asked for'));
     expect(el.textContent).toContain('2 words that sources asked for wait for an admin');
+  });
+
+  it('checks what’s kept against the shapes, a page at a time, opening what doesn’t fit', async () => {
+    const found = { entity: 'ent_01', label: 'Northern Tern', property: 'imo', message: 'IMO number doesn’t look right: seven digits, such as 9400117.', constraint: 'PatternConstraintComponent' };
+    const fetch = answer({ '/api/atlas/v1/checks': () => Response.json({ version: 3, checked: 500, offset: 0, total: 501, findings: [found] }), ...ENTITY_ROUTES_HERE });
+    const el = await open(ctx(fetch, '/ontology'));
+    await press(tab(el, 'Checks'));
+    await press(button('Check what’s kept', el));
+    expect(fetch).toHaveBeenCalledWith('/api/atlas/v1/checks?limit=500&offset=0', expect.anything());
+    expect(el.textContent).toContain('Checked 500 of 501 against version 3: 1 thing doesn’t fit.');
+    expect(el.textContent).toContain('Check the next 1');
+    await press(el.querySelector('.atlas-checks .quill-list-row'));
+    expect(pageTitle(el)).toBe('Northern Tern');
+    // The entity says so too, and where it was found.
+    await settle();
+    expect(el.querySelector('.atlas-doesnt-fit')!.textContent).toMatch(/Doesn’t fit the ontology.*IMO number doesn’t look right\..*In a fact recorded about it/);
   });
 
   it('opens a pack, showing what’s kept and offering the rest to admins only', async () => {

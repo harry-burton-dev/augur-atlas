@@ -15,8 +15,9 @@ import {
   type PackTerm,
   type TermCandidate,
 } from './api.js';
+import { KeptChecks } from './checks.js';
 
-type Tab = 'kinds' | 'links' | 'asked' | 'packs' | 'history';
+type Tab = 'kinds' | 'links' | 'asked' | 'packs' | 'checks' | 'history';
 
 /** Icons a kind can wear: the kit's, for things an org keeps track of. */
 const ICONS = ['atlas', 'people', 'person', 'account', 'org', 'department', 'apps', 'vessel', 'aircraft', 'vehicle', 'place', 'port', 'facility', 'event', 'document', 'key', 'server', 'network', 'compass', 'tag', 'star'];
@@ -63,6 +64,8 @@ export interface OntologyViewProps {
   ontology: Ontology | undefined;
   /** The ontology after a change, for the app to keep. */
   onChange: (ontology: Ontology) => void;
+  /** Opens an entity a check found something wrong with. */
+  onOpenEntity?: (id: string) => void;
 }
 
 /**
@@ -72,7 +75,7 @@ export interface OntologyViewProps {
  * decide the words sources ask for, and add their own. Anyone else sees the
  * same page with a note saying who can change it.
  */
-export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) {
+export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: OntologyViewProps) {
   const [tab, setTab] = useState<Tab>('kinds');
   const [rights, setRights] = useState<Governs>({ govern: false });
   const [packs, setPacks] = useState<PackSummary[]>([]);
@@ -561,6 +564,7 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
     ['links', 'Kinds of link'],
     ['asked', waiting ? `Asked for (${waiting})` : 'Asked for'],
     ['packs', 'Packs'],
+    ['checks', 'Checks'],
     ['history', 'History'],
   ];
   const body = failure ? (
@@ -568,7 +572,7 @@ export function OntologyView({ api, ontology: o, onChange }: OntologyViewProps) 
   ) : !o || loading ? (
     <State kind="loading" heading="Opening…" />
   ) : (
-    { kinds: kindsTab, links: linksTab, asked: askedTab, packs: packsTab, history: historyTab }[tab]()
+    { kinds: kindsTab, links: linksTab, asked: askedTab, packs: packsTab, checks: () => <KeptChecks api={api} ontology={o} onOpenEntity={onOpenEntity} />, history: historyTab }[tab]()
   );
   return (
     <div className="atlas-ontology">
