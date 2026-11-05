@@ -39,6 +39,16 @@ const holdsExtra = (holds: DetailDef['kind'], values: Record<string, string>): P
       ? { values: [...new Set((values.values ?? '').split(',').map((v) => v.trim()).filter(Boolean))] }
       : {};
 
+type Says = 'no' | 'fixed' | 'changes';
+const SAYS: SelectOption[] = [
+  { value: 'no', label: 'No' },
+  { value: 'fixed', label: 'Yes, always the same thing' },
+  { value: 'changes', label: 'Yes, but it can pass to another thing over time' },
+];
+/** What "Says which one" makes of a detail: an identity key typed on the entity, or one known through facts that changes hands. */
+const saysExtra = (says: Says, holds: DetailDef['kind']): Pick<DetailDef, 'identity' | 'onEntity' | 'changes'> =>
+  holds !== 'text' && holds !== 'number' ? { identity: false } : says === 'fixed' ? { identity: true } : says === 'changes' ? { identity: true, onEntity: false, changes: true } : { identity: false };
+
 /** What a term or change is, in a word. */
 const whatWord = (kind: 'class' | 'type' | 'detail' | 'relation') => (kind === 'relation' ? 'a kind of link' : kind === 'detail' ? 'a detail' : 'a kind of thing');
 const capital = (words: string) => words.replace(/^\w/, (x) => x.toUpperCase());
@@ -56,6 +66,8 @@ interface TermForm {
   icon: string;
   type: string;
   holds: DetailDef['kind'];
+  /** Whether the detail says which thing it is: not at all, always the same thing, or whoever holds it at the time. */
+  says: Says;
   from: string;
   to: string;
 }
@@ -148,6 +160,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: o?.types.find((t) => t.key === parent)?.icon ?? 'tag',
       type: (term.domain ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
       holds: 'text',
+      says: 'no',
       from: (term.domain ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
       to: (term.range ?? []).map((i) => packTermKind(i)).find(Boolean) ?? '',
     });
@@ -169,6 +182,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: s.op === 'add-type' ? s.type.icon : 'tag',
       type: s.op === 'add-detail' ? s.type : '',
       holds: 'text',
+      says: 'no',
       from: s.op === 'add-relation' ? (s.relation.from[0] ?? '') : '',
       to: '',
     });
@@ -188,6 +202,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
       icon: 'tag',
       type: on,
       holds: 'text',
+      says: 'no',
       from: '',
       to: '',
     });
@@ -198,7 +213,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
     const key = keyFrom(name);
     const packed = 'candidate' in f.via ? { pack: 'augur', packTerm: f.via.candidate.name } : { pack: 'augur', packTerm: name };
     if (f.what === 'type') return { op: 'add-type', type: { key, label: name, plural: values.plural?.trim() || pluralOf(name), abstract: false, icon: f.icon, ...packed, ...(f.parent ? { parent: f.parent } : {}) } };
-    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, identity: false, ...holdsExtra(f.holds, values) } };
+    if (f.what === 'detail') return { op: 'add-detail', type: f.type, detail: { key, label: name, kind: f.holds, ...saysExtra(f.says, f.holds), ...holdsExtra(f.holds, values) } };
     return { op: 'add-relation', relation: { key, label: name, inverse: values.inverse.trim(), from: f.from ? [f.from] : [], to: f.to ? [f.to] : [], ...packed } };
   };
 
@@ -291,7 +306,7 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
                 {t.abstract ? <span className="atlas-note"> a heading only</span> : null}
               </span>
               <span className="atlas-note">{[t.plural, `${t.pack.toUpperCase()} · ${t.packTerm}`, ...(t.symbol ? [`Symbol ${t.symbol}`] : [])].join(' · ')}</span>
-              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
+              {t.details.length ? <span className="atlas-note">Details: {t.details.map((d) => `${d.label}${d.unit ? ` (in ${d.unit})` : ''}${d.changes ? ' (says which one, changes hands)' : d.identity ? ' (says which one)' : d.onEntity === false ? ' (through facts)' : ''}`).join(', ')}</span> : null}
             </div>
             {govern ? (
               <div className="atlas-actions">
@@ -493,6 +508,15 @@ export function OntologyView({ api, ontology: o, onChange, onOpenEntity }: Ontol
                   <Select label="Holds" options={HOLDS} value={f.holds} onChange={(v) => setForm({ ...f, holds: v as DetailDef['kind'] })} />
                   {f.holds === 'quantity' ? <TextField key="unit" name="unit" label="Measured in" required maxLength={24} hint="The unit, as people write it: t, m, knots" /> : null}
                   {f.holds === 'choice' ? <TextField key="values" name="values" label="Values to choose from" required maxLength={2000} hint="At least two, separated by commas" /> : null}
+                  {!('pack' in f.via) && (f.holds === 'text' || f.holds === 'number') ? (
+                    <Select
+                      label="Says which one"
+                      options={SAYS}
+                      value={f.says}
+                      onChange={(v) => setForm({ ...f, says: v as Says })}
+                      hint={f.says === 'changes' ? 'Like an MMSI: known through facts with dates, and only one thing holds it at a time.' : f.says === 'fixed' ? 'Like an IMO number: no two things may share it.' : undefined}
+                    />
+                  ) : null}
                 </>
               ) : null}
               {f.what === 'relation' ? (

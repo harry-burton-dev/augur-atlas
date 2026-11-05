@@ -383,10 +383,19 @@ export const proposalRoutes = (app: FastifyInstance, atlas: Atlas) => {
         createdBy: caller.id,
       });
       void recorded({ actor: caller.id, action: 'observation.recorded', target: entity.id, workspace: caller.workspace.id, detail: { observation: observation.id, property: observation.property, proposal: found.proposal.id } });
-      const fact = req.body.as === 'accepted' ? await accept(atlas, caller, entity, [observation], {}) : undefined;
+      let fact: Awaited<ReturnType<typeof accept>>;
+      let held: { message: string } | undefined;
+      try {
+        fact = req.body.as === 'accepted' ? await accept(atlas, caller, entity, [observation], {}) : undefined;
+      } catch (err) {
+        if (!(err instanceof KeyTakenError)) throw err;
+        // Kept as seen: another entity holds the key over that time, so it can't be so here.
+        held = (await atlas.keyTaken(caller, err)) as { message: string };
+      }
       const decision = fact ? { as: 'accepted' as const, observation: observation.id, fact: fact.id } : { as: 'seen' as const, observation: observation.id };
       if (!(await store.decide(found.proposal.id, item.key, decision, caller.id))) return reply.code(409).send({ error: 'decided', message: 'Someone decided it while you were. Look again.' });
       void recorded({ actor: caller.id, action: 'proposal.decided', target: found.proposal.id, workspace: caller.workspace.id, detail: { key: item.key, as: decision.as } });
+      if (held) return reply.code(409).send({ ...held, message: `${held.message} What it says is kept as seen, not as a fact.` });
       return after(caller, found.proposal.id);
     },
   );

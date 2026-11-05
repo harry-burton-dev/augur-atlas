@@ -49,6 +49,12 @@ export interface DetailDef {
   unit?: string;
   /** A choice's values, in the order they're offered. */
   values?: string[];
+  /**
+   * An identity key that may pass from one thing to another over time, as a
+   * vessel's MMSI does. It's known through facts (`onEntity` false), and only
+   * one entity holds a value at any time. Set when the detail is added.
+   */
+  changes?: boolean;
 }
 
 /**

@@ -14,7 +14,7 @@ The things the organisation keeps track of (ships, ports, organisations, people,
 
 ## What it keeps
 
-- **Entities**, each with an `ent_` + ULID id for life, a kind from the ontology, a name, other names, a description and details. Details marked as identity keys (an IMO number, a UN/LOCODE) belong to one entity only, whatever its floor.
+- **Entities**, each with an `ent_` + ULID id for life, a kind from the ontology, a name, other names, a description and details. Details marked as identity keys (an IMO number, a UN/LOCODE) belong to one entity only, whatever its floor. An identity key that **changes hands** over time (an MMSI, which passes to another vessel when one is scrapped) is known through facts with dates instead: only one entity holds a value at any time, and a fact that would overlap another entity's is refused, naming who holds it and when. Searching by it finds whoever holds it now.
 - **The ontology**: a starter profile of the [Common Core Ontologies](https://github.com/CommonCoreOntology/CommonCoreOntologies) (BSD-3). Each kind names the pack term it stands for, by IRI, so it exports as that. Admins change the ontology, for now, in the studio (see [The ontology](#the-ontology)).
 
 ## Fenced by floor

@@ -111,7 +111,10 @@ export const checkChanges = (ontology: Ontology, changes: OntologyChange[]): str
             return 'The pattern isn’t a regular expression that can be read.';
           }
         }
-        if (d.identity && d.onEntity === false) return 'An identity key is typed on the entity itself, so it can’t be known only through facts.';
+        if (d.changes && !d.identity) return 'Only an identity key can pass from one thing to another.';
+        if (d.changes && d.onEntity !== false) return 'A key that passes from one thing to another is known through facts, each with its dates, not typed on the entity.';
+        if (d.identity && d.onEntity === false && !d.changes) return 'An identity key is typed on the entity itself, so it can’t be known only through facts, unless it passes from one thing to another over time.';
+        if (d.changes && d.kind !== 'text' && d.kind !== 'number') return 'A key that passes from one thing to another holds text or a number.';
         const holds = holdsProblem(d);
         if (holds) return holds;
         t.details.push(d);
@@ -228,6 +231,7 @@ const DETAIL_DEF = {
     hint: { type: 'string', maxLength: 200 },
     onEntity: { type: 'boolean' },
     packIri: { type: 'string', maxLength: 500 },
+    changes: { type: 'boolean' },
   },
   required: ['key', 'label', 'kind', 'identity'],
   additionalProperties: false,
