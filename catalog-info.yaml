@@ -13,10 +13,9 @@
       "augur.dev/version": "0.4.0",
       "augur.dev/app-id": "atlas",
       "augur.dev/route": "/atlas",
-      "augur.dev/sdk-range": "^1.11.0 || ^2.0.0",
-      "augur.dev/category": "pillar",
+      "augur.dev/contract": "3",
       "augur.dev/floors": "personal,team,org",
-      "augur.dev/scopes": "audit:write,people:read,events:publish,events:subscribe,models:use"
+      "augur.dev/scopes": "knowledge:read,people:read,events:subscribe"
     }
   },
   "spec": {
@@ -31,7 +30,7 @@
   "metadata": {
     "name": "apps-atlas-frontend",
     "title": "@apps/atlas-frontend",
-    "description": "Data Atlas's micro frontend. Built as one ES module the shell imports from the registry's entry URL.",
+    "description": "Data Atlas's frontend: one ES module the shell runs in a web worker, drawing Quill's remote elements by name.",
     "annotations": {
       "github.com/project-slug": "harry-burton-dev/augur-atlas",
       "backstage.io/source-location": "url:https://github.com/harry-burton-dev/augur-atlas/tree/main/frontend/",
@@ -45,10 +44,7 @@
     "type": "website",
     "lifecycle": "experimental",
     "owner": "group:default/augur-core",
-    "system": "atlas",
-    "providesApis": [
-      "api:default/atlas-intents"
-    ]
+    "system": "atlas"
   }
 }
 ---
@@ -58,7 +54,7 @@
   "metadata": {
     "name": "apps-atlas",
     "title": "@apps/atlas",
-    "description": "Data Atlas's service: the entity graph behind the gateway at /api/atlas.",
+    "description": "Data Atlas's inbound part: its API behind the gateway at /api/atlas, and the events AUGUR pushes to it.",
     "annotations": {
       "github.com/project-slug": "harry-burton-dev/augur-atlas",
       "backstage.io/source-location": "url:https://github.com/harry-burton-dev/augur-atlas/tree/main/service/",
@@ -75,45 +71,9 @@
     "system": "atlas",
     "consumesApis": [
       "api:default/events-api",
-      "api:default/models-api",
+      "api:default/knowledge-api",
       "api:default/registry-api"
     ],
-    "dependsOn": [
-      "resource:default/atlas-db"
-    ]
-  }
-}
----
-{
-  "apiVersion": "backstage.io/v1alpha1",
-  "kind": "API",
-  "metadata": {
-    "name": "atlas-intents",
-    "title": "Data Atlas intents",
-    "description": "What other apps can ask Data Atlas for, through ctx.raise or ctx.request"
-  },
-  "spec": {
-    "type": "augur-intent",
-    "lifecycle": "experimental",
-    "owner": "group:default/augur-core",
-    "system": "atlas",
-    "definition": "{\n  \"intents\": [\n    \"entity.open\",\n    \"entity.pick\",\n    \"entity.explain\",\n    \"entity.propose\"\n  ]\n}"
-  }
-}
----
-{
-  "apiVersion": "backstage.io/v1alpha1",
-  "kind": "Resource",
-  "metadata": {
-    "name": "atlas-db",
-    "description": "Data Atlas's schema in Postgres"
-  },
-  "spec": {
-    "type": "database",
-    "owner": "group:default/augur-core",
-    "system": "atlas",
-    "dependsOn": [
-      "resource:default/postgres"
-    ]
+    "dependsOn": []
   }
 }

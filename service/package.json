@@ -4,27 +4,20 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
-  "description": "Data Atlas's service: the entity graph behind the gateway at /api/atlas.",
+  "description": "Data Atlas's inbound part: its API behind the gateway at /api/atlas, and the events AUGUR pushes to it.",
   "scripts": {
     "build": "tsc -p tsconfig.json && cp ../manifest.json dist/manifest.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "node --watch --experimental-strip-types src/index.ts",
     "start": "node dist/index.js",
-    "test": "vitest run",
-    "migrate": "node --experimental-strip-types src/migrate.ts"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@augur/service-kit": "npm:@harry-burton-dev/augur-service-kit@^0.16.0",
-    "fastify": "^5.6.0",
-    "n3": "^2.13.12",
-    "pg": "^8.23.1",
-    "rdf-validate-shacl": "^0.6.5",
-    "ulid": "^3.0.2"
+    "@augur/service-kit": "npm:@harry-burton-dev/augur-service-kit@^0.18.0",
+    "fastify": "^5.6.0"
   },
   "devDependencies": {
-    "@types/n3": "^1.26.6",
     "@types/node": "^22.0.0",
-    "@types/pg": "^8.23.1",
     "typescript": "^5.6.0",
     "vitest": "^3.2.0"
   }

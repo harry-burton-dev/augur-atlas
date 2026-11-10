@@ -1,73 +1,42 @@
 {
+  "$schema": "./node_modules/@augur/app-tools/manifest-3.schema.json",
   "id": "atlas",
   "name": "Data Atlas",
-  "route": "/atlas",
-  "entry": "/apps/atlas/entry.js",
   "version": "0.4.0",
-  "sdk": "^1.11.0 || ^2.0.0",
+  "contract": 3,
   "description": "The things your organisation knows about, and what is known of them",
   "icon": "atlas",
-  "category": "pillar",
   "floors": [
     "personal",
     "team",
     "org"
   ],
-  "storage": {
-    "database": true
+  "frontend": {
+    "entry": "sandbox.js"
+  },
+  "api": {
+    "openapi": "openapi.json"
   },
   "scopes": [
-    "audit:write",
+    "knowledge:read",
     "people:read",
-    "events:publish",
-    "events:subscribe",
-    "models:use"
+    "events:subscribe"
   ],
-  "orbit": false,
-  "handles": [
-    "entity.open",
-    "entity.pick",
-    "entity.explain",
-    "entity.propose"
-  ],
-  "menu": [
-    {
-      "id": "atlas",
-      "label": "Atlas",
-      "icon": "structure",
-      "items": [
-        {
-          "id": "entities",
-          "label": "Everything here",
-          "icon": "list",
-          "path": "/entities",
-          "detail": "The entities you can see from this floor",
-          "keywords": "entities things ships people places organisations"
-        },
-        {
-          "id": "new",
-          "label": "Add an entity",
-          "icon": "plus",
-          "path": "/entities/new",
-          "keywords": "create new add thing"
-        },
-        {
-          "id": "triage",
-          "label": "Triage",
-          "icon": "inbox",
-          "path": "/triage",
-          "detail": "What’s proposed here, waiting for a lead",
-          "keywords": "triage proposals review mentions decide"
-        },
-        {
-          "id": "ontology",
-          "label": "Ontology",
-          "icon": "tag",
-          "path": "/ontology",
-          "detail": "The kinds of thing kept, and the packs they come from",
-          "keywords": "ontology kinds types links packs cco owl vocabulary studio"
-        }
-      ]
-    }
-  ]
+  "contributes": {
+    "places": [
+      {
+        "id": "find",
+        "label": "Find",
+        "icon": "find",
+        "path": "/"
+      }
+    ],
+    "about": [
+      {
+        "id": "details",
+        "label": "Details",
+        "icon": "info"
+      }
+    ]
+  }
 }

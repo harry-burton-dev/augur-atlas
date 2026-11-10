@@ -8,7 +8,10 @@ AGENTS.md and the ADRs there before changing how this app reaches the platform.
 ## Where to look
 - AUGUR's decisions (ADRs and PDRs) in the Decision register, in the AUGUR handbook on Google Drive
   (`04 Decisions`, https://drive.google.com/drive/folders/16wXmUMRNP2_vXAlf4kBMF9hCDNUXg7yO), especially 0012 (apps in their own repositories), 0015
-  (React, Quill, Tailwind) and 0047 (how this repository releases).
+  (React, Quill, Tailwind), 0047 (how this repository releases), 0055 (one source per API), 0081 and 0099
+  (the knowledge graph's ontology and predicate roles), and Data Atlas's PDR-002 (the view spec and use-ranking).
+- App patterns, "A thing's page", in the handbook's `02 Principles`: the shape `service/src/shape.ts` fills.
+- AUGUR's `docs/build-an-app.md`: the SDK, the service kit and the stand-in shell.
 - This repository's own decisions are in the same register, under its name. Records are never written into
   a repository: ask for a number and send what was decided and why.
 - The task: its Linear issue (team PER, initiative AUGUR).
@@ -18,6 +21,9 @@ AGENTS.md and the ADRs there before changing how this app reaches the platform.
   unavailable things stay visible and say why; a new dependency needs a record.
 - Reach AUGUR only through `@augur/*` packages, the gateway, the manifest and events. Never bundle React or
   the kit: the shell serves them (`isSharedModule` in vite.config.ts).
+- Data Atlas keeps none of the knowledge graph: it reads it as the person (`x-augur-delegation`) on every call.
+  Its own tables hold only what is Atlas's (what people follow, what they use).
+- Wire types live once, in `service/src/api-types.ts`.
 - Every pull request carries a changeset (`pnpm changeset`). Merging the Version packages pull request
   releases the app as a beta; AUGUR's Promote to stable makes it stable.
 - `pnpm install`, then `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`. Locally you need
