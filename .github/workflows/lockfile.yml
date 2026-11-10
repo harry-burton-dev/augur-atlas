@@ -2,7 +2,8 @@ name: Lockfile
 # Brings pnpm-lock.yaml up to date on a pull request's branch and pushes it. For a change that adds or bumps a
 # package from GitHub Packages (AUGUR's @augur/* packages) made where no read token is set, such as a cloud
 # session: Actions → Lockfile → Run workflow, with the branch. It pushes with RELEASE_TOKEN when set (else this
-# run's own token, and then CI doesn't run on the new commit: push any commit after it). Never on main.
+# run's own token, and then CI doesn't run on the new commit: run CI on the branch by hand, or push any commit
+# after it). Never on main.
 on:
   workflow_dispatch:
     inputs:
@@ -44,7 +45,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pnpm-lock.yaml
-          git commit -m "Update the lockfile"
+          git commit -m "Update pnpm-lock.yaml"
           git push origin "HEAD:$BRANCH"
         env:
           BRANCH: ${{ inputs.branch }}

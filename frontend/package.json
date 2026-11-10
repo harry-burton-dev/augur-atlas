@@ -4,32 +4,17 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
-  "description": "Data Atlas's micro frontend. Built as one ES module the shell imports from the registry's entry URL.",
+  "description": "Data Atlas's frontend: one ES module the shell runs in a web worker, drawing Quill's remote elements by name.",
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.8.0",
-    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^2.1.0",
-    "graphology": "^0.26.0",
-    "graphology-layout-forceatlas2": "^0.10.1",
-    "maplibre-gl": "^5.6.0",
-    "milsymbol": "^3.0.4",
-    "pmtiles": "^4.3.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "sigma": "^3.0.3"
+    "@augur/mfe-sdk": "npm:@harry-burton-dev/augur-mfe-sdk@^3.1.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.3.3",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^5.2.0",
-    "graphology-types": "^0.24.8",
-    "happy-dom": "^20.0.0",
-    "tailwindcss": "4.3.3",
+    "@augur/app-kit": "npm:@harry-burton-dev/augur-app-kit@^0.21.0",
     "typescript": "^5.6.0",
     "vite": "^7.3.7",
     "vitest": "^3.2.0"
