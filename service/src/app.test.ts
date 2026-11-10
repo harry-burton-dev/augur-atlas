@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { memoryEvents } from './events.ts';
-import { KnowledgeRefused, memoryKnowledge, type Knowledge, type KnowledgeStore } from './knowledge.ts';
+import { KnowledgeRefused, memoryKnowledge, type Acted, type Knowledge, type KnowledgeStore } from './knowledge.ts';
 
 const manifest = readManifest(import.meta.url);
 // The knowledge graph review's store, as the knowledge service answers Alex on Fri 20 Nov 2026.
@@ -130,7 +130,75 @@ describe('the service', () => {
     const res = await app.inject({ remoteAddress: fromGateway, method: 'GET', url: `/${(manifest.api as { openapi: string }).openapi}` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ openapi: expect.stringMatching(/^3\./), info: { title: manifest.name, version: packageVersion(import.meta.url) } });
-    expect(Object.keys(res.json().paths)).toEqual(['/v1/things/{id}', '/v1/find']);
+    expect(Object.keys(res.json().paths)).toEqual(['/v1/things/{id}', '/v1/things/{id}/everything', '/v1/things/{id}/wrong', '/v1/things/{id}/disputes', '/v1/follows/{id}', '/v1/find']);
+  });
+});
+
+describe('everything we know, and what a person does about it', () => {
+  const ask = async (method: 'GET' | 'PUT' | 'DELETE' | 'POST', url: string, { acted = [] as Acted, headers = {} as Record<string, string>, payload = undefined as unknown } = {}) => {
+    const { app, gateway } = await behindGateway(memoryKnowledge(store, acted));
+    return app.inject({ remoteAddress: fromGateway, method, url, headers: { ...(await delegated(gateway)), ...headers }, ...(payload === undefined ? {} : { payload: payload as object }) });
+  };
+
+  it('lists everything known now, the links both ways, and what was true before', async () => {
+    const res = await ask('GET', '/v1/things/mv-saltmarsh-heron/everything');
+    expect(res.statusCode).toBe(200);
+    const all = res.json();
+    expect(all.sections.map((s: { key: string }) => s.key)).toEqual(['now', 'links', 'before']);
+    const [now, links] = all.sections;
+    expect(now.rows.length).toBeGreaterThan(0);
+    // Each row says when and on how many reports, in words.
+    for (const r of now.rows) expect(r.detail).toMatch(/report/);
+    // A link opens the thing it reaches.
+    expect(links.rows.some((r: { opens?: string }) => r.opens === 'port-of-kessick')).toBe(true);
+  });
+
+  it('says a place’s incoming links in their own words', async () => {
+    const all = (await ask('GET', '/v1/things/port-of-kessick/everything')).json();
+    const links = all.sections.find((s: { key: string }) => s.key === 'links').rows;
+    expect(links.some((r: { opens?: string; value: string }) => r.opens === 'mv-saltmarsh-heron' && r.value === 'MV Saltmarsh Heron')).toBe(true);
+  });
+
+  it('offers the page’s own lines first when something is wrong', async () => {
+    const res = await ask('GET', '/v1/things/mv-saltmarsh-heron/wrong');
+    expect(res.statusCode).toBe(200);
+    const { lines } = res.json();
+    expect(lines.length).toBeGreaterThan(1);
+    expect(new Set(lines.map((l: { belief: string }) => l.belief)).size).toBe(lines.length);
+    expect(lines[0].line).toMatch(/: /);
+  });
+
+  it('disputes a line as the person, once however often it is sent', async () => {
+    const acted: Acted = [];
+    const { lines } = (await ask('GET', '/v1/things/mv-saltmarsh-heron/wrong')).json();
+    const body = { belief: lines[0].belief, reason: '  She left on Monday.  ' };
+    const first = await ask('POST', '/v1/things/mv-saltmarsh-heron/disputes', { acted, headers: { 'idempotency-key': 'press-0001' }, payload: body });
+    const again = await ask('POST', '/v1/things/mv-saltmarsh-heron/disputes', { acted, headers: { 'idempotency-key': 'press-0001' }, payload: body });
+    expect([first.statusCode, again.statusCode]).toEqual([200, 200]);
+    expect(first.json().dispute).toEqual(expect.any(String));
+    expect(acted).toEqual([{ name: 'dispute', input: { belief: lines[0].belief, reason: 'She left on Monday.' }, key: 'atlas-press-0001' }]);
+  });
+
+  it('refuses a dispute with no key, or about another thing', async () => {
+    const acted: Acted = [];
+    const { lines } = (await ask('GET', '/v1/things/mv-saltmarsh-heron/wrong')).json();
+    const keyless = await ask('POST', '/v1/things/mv-saltmarsh-heron/disputes', { acted, payload: { belief: lines[0].belief, reason: 'Wrong.' } });
+    const elsewhere = await ask('POST', '/v1/things/port-of-kessick/disputes', { acted, headers: { 'idempotency-key': 'press-0002' }, payload: { belief: lines[0].belief, reason: 'Wrong.' } });
+    expect([keyless.statusCode, elsewhere.statusCode]).toEqual([400, 422]);
+    expect(acted).toEqual([]);
+  });
+
+  it('keeps an eye on a thing in sight, and stops', async () => {
+    const { app, gateway } = await behindGateway();
+    const call = async (method: 'GET' | 'PUT' | 'DELETE', id = 'mv-saltmarsh-heron') =>
+      app.inject({ remoteAddress: fromGateway, method, url: `/v1/follows/${id}`, headers: await delegated(gateway) });
+    expect((await call('GET')).json()).toEqual({ thing: 'mv-saltmarsh-heron', following: false });
+    expect((await call('PUT')).json().following).toBe(true);
+    expect((await call('GET')).json().following).toBe(true);
+    expect((await call('DELETE')).json().following).toBe(false);
+    expect((await call('GET')).json().following).toBe(false);
+    // Nobody learns of a thing out of sight by following it.
+    expect((await call('PUT', 'nowhere')).statusCode).toBe(404);
   });
 });
 

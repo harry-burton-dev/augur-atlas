@@ -80,3 +80,79 @@ export const foundSchema = {
     things: { type: 'array', items: { type: 'object', required: ['id', 'name', 'kind'], additionalProperties: false, properties: { id: S, name: S, kind: S } } },
   },
 } as const;
+
+/** `GET /v1/things/:id/everything`: all that is known of a thing in sight, now and before, in plain sections. */
+export interface Everything {
+  id: string;
+  name: string;
+  sections: { key: 'now' | 'links' | 'before'; label: string; rows: EverythingRow[] }[];
+}
+export interface EverythingRow {
+  /** The belief it says, for "Something's wrong". */
+  belief: string;
+  label: string;
+  value: string;
+  /** When it was said and how many reports agree, in words. */
+  detail: string;
+  /** The thing it links to, to open. */
+  opens?: string;
+}
+
+/** `GET /v1/things/:id/wrong`: the lines a person can say are wrong, as the page shows them. */
+export interface WrongChoices {
+  lines: { belief: string; line: string }[];
+}
+
+/** `POST /v1/things/:id/disputes`: one line said to be wrong, for its floor's settler. */
+export interface DisputeAsk {
+  belief: string;
+  reason: string;
+}
+export interface Disputed {
+  dispute: string;
+}
+
+/** `GET|PUT|DELETE /v1/follows/:id`: whether the person keeps an eye on a thing (Data Atlas's own data). */
+export interface Following {
+  thing: string;
+  following: boolean;
+}
+
+const row = {
+  type: 'object',
+  required: ['belief', 'label', 'value', 'detail'],
+  additionalProperties: false,
+  properties: { belief: S, label: S, value: S, detail: S, opens: S },
+} as const;
+
+export const everythingSchema = {
+  type: 'object',
+  required: ['id', 'name', 'sections'],
+  additionalProperties: false,
+  properties: {
+    id: S,
+    name: S,
+    sections: {
+      type: 'array',
+      items: { type: 'object', required: ['key', 'label', 'rows'], additionalProperties: false, properties: { key: { type: 'string', enum: ['now', 'links', 'before'] }, label: S, rows: { type: 'array', items: row } } },
+    },
+  },
+} as const;
+
+export const wrongChoicesSchema = {
+  type: 'object',
+  required: ['lines'],
+  additionalProperties: false,
+  properties: { lines: { type: 'array', items: { type: 'object', required: ['belief', 'line'], additionalProperties: false, properties: { belief: S, line: S } } } },
+} as const;
+
+export const disputeAskSchema = {
+  type: 'object',
+  required: ['belief', 'reason'],
+  additionalProperties: false,
+  properties: { belief: { type: 'string', minLength: 1, maxLength: 80 }, reason: { type: 'string', minLength: 1, maxLength: 500 } },
+} as const;
+
+export const disputedSchema = { type: 'object', required: ['dispute'], additionalProperties: false, properties: { dispute: S } } as const;
+
+export const followingSchema = { type: 'object', required: ['thing', 'following'], additionalProperties: false, properties: { thing: S, following: { type: 'boolean' } } } as const;

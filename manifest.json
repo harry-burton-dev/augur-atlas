@@ -19,6 +19,7 @@
   },
   "scopes": [
     "knowledge:read",
+    "knowledge:act",
     "people:read",
     "events:subscribe"
   ],
