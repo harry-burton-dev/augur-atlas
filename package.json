@@ -19,7 +19,7 @@
     "check:app": "augur-app validate && augur-app release describe > /dev/null"
   },
   "devDependencies": {
-    "@augur/app-tools": "npm:@harry-burton-dev/augur-app-tools@^0.5.0",
+    "@augur/app-tools": "npm:@harry-burton-dev/augur-app-tools@^0.6.0",
     "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.14.0",

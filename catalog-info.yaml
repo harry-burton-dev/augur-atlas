@@ -15,7 +15,7 @@
       "augur.dev/route": "/atlas",
       "augur.dev/contract": "3",
       "augur.dev/floors": "personal,team,org",
-      "augur.dev/scopes": "knowledge:read,people:read,events:subscribe"
+      "augur.dev/scopes": "knowledge:read,knowledge:act,people:read,events:subscribe"
     }
   },
   "spec": {

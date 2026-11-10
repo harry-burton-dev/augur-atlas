@@ -16,4 +16,15 @@ export const MIGRATIONS: readonly Migration[] = [
       kept_at timestamptz not null default now()
     )`,
   },
+  {
+    // What each person keeps an eye on, on each floor (follows.ts). Data Atlas's own: the graph keeps none of it.
+    id: '002_follows',
+    sql: `create table follows (
+      person text not null,
+      floor text not null,
+      thing text not null,
+      since timestamptz not null default now(),
+      primary key (person, floor, thing)
+    )`,
+  },
 ];

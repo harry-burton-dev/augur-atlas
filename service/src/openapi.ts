@@ -1,5 +1,5 @@
 import type { AppManifest } from '@augur/service-kit';
-import { foundSchema, thingViewSchema } from './api-types.ts';
+import { disputeAskSchema, disputedSchema, everythingSchema, followingSchema, foundSchema, thingViewSchema, wrongChoicesSchema } from './api-types.ts';
 
 /**
  * The service's OpenAPI document, served at the manifest's `api.openapi` path; the registry reads it
@@ -23,6 +23,46 @@ export const openApi = (manifest: AppManifest, version: string, api: string) => 
           502: { description: 'The knowledge graph did not answer', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
         },
       },
+    },
+    [`/${api}/things/{id}/everything`]: {
+      get: {
+        operationId: 'getEverything',
+        summary: 'Everything known of a thing in sight: now, its links both ways, and what was true before',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Its sections', content: { 'application/json': { schema: everythingSchema } } },
+          404: { description: 'Nothing by that id is in sight from this floor', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+          502: { description: 'The knowledge graph did not answer', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+        },
+      },
+    },
+    [`/${api}/things/{id}/wrong`]: {
+      get: {
+        operationId: 'getWrongChoices',
+        summary: 'The lines a person can say are wrong, the page’s own first',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { 200: { description: 'The lines', content: { 'application/json': { schema: wrongChoicesSchema } } }, 404: { description: 'Not in sight', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } } },
+      },
+    },
+    [`/${api}/things/{id}/disputes`]: {
+      post: {
+        operationId: 'dispute',
+        summary: 'Say one line is wrong, for its floor’s settler to settle (the knowledge graph’s dispute action, as the person)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 8 } }],
+        requestBody: { required: true, content: { 'application/json': { schema: disputeAskSchema } } },
+        responses: {
+          200: { description: 'The dispute, opened', content: { 'application/json': { schema: disputedSchema } } },
+          400: { description: 'No Idempotency-Key', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+          403: { description: 'Not allowed: says why and who can change it', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+          409: { description: 'Already said', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+          422: { description: 'That line isn’t about this thing', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },
+        },
+      },
+    },
+    [`/${api}/follows/{id}`]: {
+      get: { operationId: 'getFollowing', summary: 'Whether the person keeps an eye on a thing, on this floor', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Whether', content: { 'application/json': { schema: followingSchema } } } } },
+      put: { operationId: 'follow', summary: 'Keep an eye on a thing in sight', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Kept', content: { 'application/json': { schema: followingSchema } } }, 404: { description: 'Not in sight', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } } } },
+      delete: { operationId: 'unfollow', summary: 'Stop keeping an eye on it', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Stopped', content: { 'application/json': { schema: followingSchema } } } } },
     },
     [`/${api}/find`]: {
       get: {
