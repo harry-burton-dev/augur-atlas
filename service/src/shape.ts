@@ -74,6 +74,8 @@ export interface ThingInput {
   /** How many reports name it, for the empty answer. */
   reports: number;
   now: Date;
+  /** How often people on this floor opened things from a page of its kind, and by which links (uses.ts). */
+  uses?: { visits: number; links: Record<string, number> };
 }
 
 /** The ranking's weights (PDR-002's cold start): a role's weight, times the reports behind it, decayed by age. */
@@ -83,11 +85,17 @@ export interface Ranking {
   halfAgeDays: number;
   /** A state older than this is "Last heard", not "Now". */
   freshDays: number;
+  /** Use-ranking (PDR-002): a link that led to every thing opened from this kind's pages counts this much more. */
+  useWeight: number;
+  /** Things opened from this kind's pages on this floor before use counts at all: the cold start holds until then. */
+  useAfter: number;
 }
 export const DEFAULT_RANKING: Ranking = {
   weights: { problem: 4, status: 3.5, next: 3.5, resolves: 3, outcome: 3, identity: 2, party: 2, place: 2, quantity: 1.5, thing: 1.5, time: 1, other: 0.5 },
   halfAgeDays: 14,
   freshDays: 10,
+  useWeight: 2,
+  useAfter: 5,
 };
 
 const FORECAST = new Set(['expected', 'planned', 'possible']);
@@ -161,9 +169,12 @@ export function rulesFor(input: ThingInput, ranking: Ranking = DEFAULT_RANKING):
     const withUnit = b.value?.unit && typeof v === 'number' ? `${text} ${b.value.unit}` : text;
     return (b.value?.approx ? 'About ' + withUnit : withUnit.charAt(0).toUpperCase() + withUnit.slice(1)).trim();
   };
+  const { visits, links: usedLinks } = input.uses ?? { visits: 0, links: {} };
+  /** The share of things opened from this kind's pages that this link led to, once there are enough to count. */
+  const used = (b: KBelief) => (visits < ranking.useAfter ? 0 : Math.min(1, (usedLinks[`${b.subject === input.entity.id ? 'out' : 'in'} ${b.predicate}`] ?? 0) / visits));
   const rank = (b: KBelief) => {
     const age = Math.max(0, (input.now.getTime() - new Date(b.recordedAt).getTime()) / DAY);
-    return ranking.weights[roleOf(b)] * (1 + b.evidence.sources) / (1 + age / ranking.halfAgeDays);
+    return ((ranking.weights[roleOf(b)] * (1 + b.evidence.sources)) / (1 + age / ranking.halfAgeDays)) * (1 + ranking.useWeight * used(b));
   };
   return {
     roleOf,

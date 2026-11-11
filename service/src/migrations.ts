@@ -27,4 +27,17 @@ export const MIGRATIONS: readonly Migration[] = [
       primary key (person, floor, thing)
     )`,
   },
+  {
+    // How often people on a floor open things from a kind of thing's page, and by which links (uses.ts): counts, never who.
+    id: '003_uses',
+    sql: `create table uses (
+      floor text not null,
+      kind text not null,
+      way text not null check (way in ('out', 'in', 'visit')),
+      predicate text not null,
+      opens integer not null default 1,
+      last_at timestamptz not null default now(),
+      primary key (floor, kind, way, predicate)
+    )`,
+  },
 ];

@@ -20,13 +20,14 @@ export default defineApp((ctx) => {
   let following = false;
   let over: Over = { kind: 'none' };
   let asking = 0;
+  let cameFrom: string | undefined;
 
   const draw = () =>
     ctx.frame.screen.render(
       route.kind === 'thing'
-        ? thingScreen(thing, { following, over }, { open, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
+        ? thingScreen(thing, { following, over }, { open: openFrom, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
         : route.kind === 'all'
-          ? everythingScreen(all, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open, retry: () => void read(route) })
+          ? everythingScreen(all, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open: openFrom, retry: () => void read(route) })
           : route.kind === 'door'
             ? doorScreen(door, { home: () => go({ kind: 'home' }), open, retry: () => void read(route) })
             : route.kind === 'home'
@@ -100,7 +101,10 @@ export default defineApp((ctx) => {
     thing = { kind: 'asking' };
     ctx.frame.set({ title: 'Data Atlas' });
     draw();
-    const [answer, eye] = await Promise.all([ask<ThingView>(thingPath(at.id)), ask<Following>(`/follows/${encodeURIComponent(at.id)}`)]);
+    // Opened from another thing's page: say which, so the link followed counts towards use-ranking on this floor.
+    const from = cameFrom && cameFrom !== at.id ? `?from=${encodeURIComponent(cameFrom)}` : '';
+    cameFrom = undefined;
+    const [answer, eye] = await Promise.all([ask<ThingView>(`${thingPath(at.id)}${from}`), ask<Following>(`/follows/${encodeURIComponent(at.id)}`)]);
     if (mine !== asking) return;
     thing = answer;
     following = eye.kind === 'answered' && eye.value.following;
@@ -184,6 +188,11 @@ export default defineApp((ctx) => {
   }
   function open(id: string) {
     go({ kind: 'thing', id });
+  }
+  // From a thing's page, or everything known of it, to a thing linked to it.
+  function openFrom(id: string) {
+    if (route.kind === 'thing' || route.kind === 'all') cameFrom = route.id;
+    open(id);
   }
 
   ctx.onNavigate(arrive);

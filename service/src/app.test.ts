@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { memoryEvents } from './events.ts';
 import { memoryFollows } from './follows.ts';
+import { memoryUses } from './uses.ts';
 import { KnowledgeRefused, memoryKnowledge, type Acted, type Knowledge, type KnowledgeStore } from './knowledge.ts';
 
 const manifest = readManifest(import.meta.url);
@@ -244,6 +245,43 @@ describe('home: the door gallery', () => {
     await follows.follow('alex', 'ws-team', 'mv-saltmarsh-heron');
     const home = (await app.inject({ remoteAddress: fromGateway, method: 'GET', url: '/v1/home', headers: await delegated(gateway) })).json();
     expect(home.signals).toContainEqual({ kind: 'change', reason: expect.stringMatching(/^MV Saltmarsh Heron: \d+ new lines?$/), about: 'mv-saltmarsh-heron' });
+  });
+});
+
+describe('use-ranking: what people on a floor follow', () => {
+  const around = async (call: (url: string) => Promise<{ json: () => { around: { id: string }[] } }>) => (await call('/v1/things/mv-saltmarsh-heron')).json().around.map((a) => a.id);
+
+  it('lifts a link people follow from a kind of thing’s page, once enough have', async () => {
+    const uses = memoryUses();
+    const gateway = callerSigner();
+    const app = await buildApp({ manifest, callers: callerCheckFor(gateway, callerAudienceOf(manifest)), knowledge: () => memoryKnowledge(store), uses, directory, now: () => new Date(store.now) });
+    const call = async (url: string) => app.inject({ remoteAddress: fromGateway, method: 'GET', url, headers: await delegated(gateway) });
+    const before = await around(call);
+    // Four follows from a ship's page to the tug that helped it off the berth: not yet enough to count.
+    for (let i = 0; i < 4; i++) expect((await call('/v1/things/tug-osprey?from=mv-saltmarsh-heron')).statusCode).toBe(200);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await uses.counts('ws-team', 'Ship')).toMatchObject({ visits: 4, links: { 'in assistedUnberthing': 4, 'in bookedToAssist': 4 } });
+    expect(await around(call)).toEqual(before);
+    // The fifth makes it count, and the tug rises among what is around the ship.
+    await call('/v1/things/tug-osprey?from=mv-saltmarsh-heron');
+    await new Promise((r) => setTimeout(r, 0));
+    const after = await around(call);
+    expect(after.indexOf('tug-osprey')).toBeLessThan(before.indexOf('tug-osprey'));
+  });
+
+  it('counts per floor and never who followed', async () => {
+    const uses = memoryUses();
+    const gateway = callerSigner();
+    const app = await buildApp({ manifest, callers: callerCheckFor(gateway, callerAudienceOf(manifest)), knowledge: () => memoryKnowledge(store), uses, directory, now: () => new Date(store.now) });
+    await app.inject({ remoteAddress: fromGateway, method: 'GET', url: '/v1/things/tug-osprey?from=mv-saltmarsh-heron', headers: await delegated(gateway) });
+    // A "from" with no link to the thing counts nothing.
+    await app.inject({ remoteAddress: fromGateway, method: 'GET', url: '/v1/things/tug-osprey?from=marta-kowal', headers: await delegated(gateway) });
+    await new Promise((r) => setTimeout(r, 0));
+    const ship = await uses.counts('ws-team', 'Ship');
+    expect(ship.visits).toBe(1);
+    expect(Object.values(ship.links).every((n) => n === 1)).toBe(true);
+    expect(await uses.counts('ws-other', 'Ship')).toEqual({ visits: 0, links: {} });
+    expect(await uses.counts('ws-team', 'Person')).toEqual({ visits: 0, links: {} });
   });
 });
 
