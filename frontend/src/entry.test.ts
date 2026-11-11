@@ -75,6 +75,17 @@ const fakeService = () => {
       if (init?.method === 'DELETE') followed.delete(follow[1]!);
       return Response.json({ thing: follow[1], following: followed.has(follow[1]!) });
     }
+    if (path.endsWith('/home'))
+      return Response.json({
+        doors: [
+          { id: 'changed', name: 'See what has changed', line: 'On what you keep an eye on', icon: 'history', reads: ['change'], order: 1 },
+          { id: 'keep-an-eye', name: 'Keep an eye on something', line: 'Hear when it changes', icon: 'star', reads: ['coming'], order: 2 },
+        ],
+        signals: [{ kind: 'change', reason: 'MV Saltmarsh Heron: 2 new lines', about: heron.id }],
+        firstDay: followed.size === 0,
+        following: [...followed].map((id) => ({ id, label: id === heron.id ? heron.name : id })),
+      });
+    if (path.endsWith('/doors/changed')) return Response.json({ door: 'changed', heading: 'What has changed', items: [{ id: heron.id, title: heron.name, detail: '2 new lines' }], empty: 'Nothing has changed.' });
     if (path.includes('/find?')) return Response.json({ query: 'heron', things: [{ id: heron.id, name: heron.name, kind: 'Ship' }] });
     if (path.endsWith('/everything')) return Response.json(everything);
     if (path.endsWith('/wrong')) return Response.json({ lines: [{ belief: 'b1', line: 'Status: Delayed' }, { belief: 'b2', line: 'At: Port of Kessick' }] });
@@ -97,9 +108,69 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 const find = (node: RemoteNode) => elements(node).find((e) => e.type === 'quill-text-field')!;
 const thingPage = (node: RemoteNode) => elements(node).find((e) => e.type === 'quill-thing-page');
 
+const gallery = (node: RemoteNode) => elements(node).find((e) => e.type === 'quill-door-gallery');
+
+describe('home: the door gallery', () => {
+  it('opens on the doors, with the signals the shell lights them from', async () => {
+    const { ctx, shell } = fakeShell(fakeService());
+    await start(ctx);
+    await settle();
+    expect(shell.fetched).toEqual([`/api/${manifest.id}/v1/home`]);
+    const doors = gallery(shell.screen)!;
+    expect(doors.props!.doors).toHaveLength(2);
+    expect(doors.props!.signals).toEqual([{ kind: 'change', reason: 'MV Saltmarsh Heron: 2 new lines', about: heron.id }]);
+    expect(doors.props!.firstDay).toBe(true);
+    expect(doors.props!.loading).toBe(false);
+  });
+
+  it('asks on its line to find, opens a door, and opens a thing behind it', async () => {
+    const { ctx, shell } = fakeShell(fakeService());
+    await start(ctx);
+    await settle();
+    (gallery(shell.screen)!.props!.onAsk as (q: string) => void)('heron');
+    await settle();
+    expect(shell.navigated).toEqual(['/find']);
+    expect(shell.fetched).toContain(`/api/${manifest.id}/v1/find?q=heron`);
+    expect(text(shell.screen)).toContain('MV Saltmarsh Heron');
+
+    shell.moved!('/');
+    await settle();
+    (gallery(shell.screen)!.props!.onOpen as (id: string) => void)('changed');
+    await settle();
+    expect(shell.navigated.at(-1)).toBe('/doors/changed');
+    expect(shell.pane.title).toBe('What has changed');
+    const list = elements(shell.screen).find((e) => e.type === 'quill-list')!;
+    (list.props!.onOpen as (id: string) => void)(heron.id);
+    await settle();
+    expect(shell.navigated.at(-1)).toBe(`/things/${heron.id}`);
+  });
+
+  it('shows what the person keeps an eye on under the ask line, and opens it', async () => {
+    const answer = fakeService();
+    await answer(`/api/${manifest.id}/v1/follows/${heron.id}`, { method: 'PUT' });
+    const { ctx, shell } = fakeShell(answer);
+    await start(ctx);
+    await settle();
+    const doors = gallery(shell.screen)!;
+    expect(doors.props!.firstDay).toBe(false);
+    expect((doors.props!.ask as { recents: unknown[] }).recents).toEqual([{ id: heron.id, label: heron.name }]);
+    (doors.props!.onRecent as (id: string) => void)(heron.id);
+    await settle();
+    expect(shell.navigated.at(-1)).toBe(`/things/${heron.id}`);
+  });
+
+  it('says why when the ways in can’t be read', async () => {
+    const { ctx, shell } = fakeShell(refusal(502, 'The knowledge graph did not answer.'));
+    await start(ctx);
+    await settle();
+    const state = elements(shell.screen).find((e) => e.type === 'quill-state')!;
+    expect(state.props).toMatchObject({ kind: 'error', body: 'The knowledge graph did not answer.' });
+  });
+});
+
 describe('the app', () => {
-  it('opens on finding a thing, and finds through its own service', async () => {
-    const { ctx, shell } = fakeShell(service);
+  it('finds a thing through its own service', async () => {
+    const { ctx, shell } = fakeShell(service, '/find');
     await start(ctx);
     expect(shell.fetched).toEqual([]);
     expect(shell.pane.title).toBe('Find a thing');
@@ -112,7 +183,7 @@ describe('the app', () => {
   });
 
   it('opens a thing it found on its own page, in the one shape', async () => {
-    const { ctx, shell } = fakeShell(service);
+    const { ctx, shell } = fakeShell(service, '/find');
     await start(ctx);
     (find(shell.screen).props!.onCommit as (q: string) => void)('heron');
     await settle();
@@ -137,7 +208,7 @@ describe('the app', () => {
     await settle();
     expect(shell.navigated).toEqual(['/things/port-of-kessick']);
     expect(shell.fetched).toContain(`/api/${manifest.id}/v1/things/port-of-kessick`);
-    shell.moved!('/');
+    shell.moved!('/find');
     expect(find(shell.screen)).toBeDefined();
   });
 

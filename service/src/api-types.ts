@@ -156,3 +156,81 @@ export const disputeAskSchema = {
 export const disputedSchema = { type: 'object', required: ['dispute'], additionalProperties: false, properties: { dispute: S } } as const;
 
 export const followingSchema = { type: 'object', required: ['thing', 'following'], additionalProperties: false, properties: { thing: S, following: { type: 'boolean' } } } as const;
+
+/** A way in on the home door gallery: the kit's `DoorDescriptor`, as plain data. */
+export type DoorSignalKind = 'change' | 'moved' | 'incident' | 'contradiction' | 'meeting' | 'due' | 'coming' | 'new-thing' | 'question' | 'queue';
+export interface HomeDoor {
+  id: string;
+  name: string;
+  line: string;
+  icon: string;
+  reads: DoorSignalKind[];
+  order: number;
+  firstDay?: string;
+  unavailable?: { why: string; who: string };
+}
+/** One thing that may wait behind a door (the kit's `DoorSignal`): the shell scores the doors from these. */
+export interface HomeSignal {
+  kind: DoorSignalKind;
+  reason: string;
+  about?: string;
+}
+
+/** `GET /v1/home`: the doors, what waits behind them, and what the person keeps an eye on. */
+export interface Home {
+  doors: HomeDoor[];
+  signals: HomeSignal[];
+  /** Nothing is followed yet. */
+  firstDay: boolean;
+  following: { id: string; label: string }[];
+}
+
+/** `GET /v1/doors/:id`: what is behind one door, as a list of things. */
+export interface DoorList {
+  door: string;
+  heading: string;
+  items: { id: string; title: string; detail: string }[];
+  empty: string;
+}
+
+const signalKind = { type: 'string', enum: ['change', 'moved', 'incident', 'contradiction', 'meeting', 'due', 'coming', 'new-thing', 'question', 'queue'] } as const;
+export const homeSchema = {
+  type: 'object',
+  required: ['doors', 'signals', 'firstDay', 'following'],
+  additionalProperties: false,
+  properties: {
+    doors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['id', 'name', 'line', 'icon', 'reads', 'order'],
+        additionalProperties: false,
+        properties: {
+          id: S,
+          name: S,
+          line: S,
+          icon: S,
+          reads: { type: 'array', items: signalKind },
+          order: { type: 'number' },
+          firstDay: S,
+          unavailable: { type: 'object', required: ['why', 'who'], additionalProperties: false, properties: { why: S, who: S } },
+        },
+      },
+    },
+    signals: { type: 'array', items: { type: 'object', required: ['kind', 'reason'], additionalProperties: false, properties: { kind: signalKind, reason: S, about: S } } },
+    firstDay: { type: 'boolean' },
+    following: { type: 'array', items: { type: 'object', required: ['id', 'label'], additionalProperties: false, properties: { id: S, label: S } } },
+  },
+} as const;
+
+export const doorListSchema = {
+  type: 'object',
+  required: ['door', 'heading', 'items', 'empty'],
+  additionalProperties: false,
+  properties: {
+    door: S,
+    heading: S,
+    items: { type: 'array', items: { type: 'object', required: ['id', 'title', 'detail'], additionalProperties: false, properties: { id: S, title: S, detail: S } } },
+    empty: S,
+  },
+} as const;

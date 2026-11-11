@@ -1,15 +1,18 @@
 import { defineApp } from '@augur/mfe-sdk/sdk3';
-import type { Disputed, Everything, Following, Found, ThingView, WrongChoices } from '../../service/src/api-types.js';
-import { ABOUT, API, details, everythingScreen, findScreen, pathOf, routeOf, thingScreen, why, type Asked, type Over, type Route, type Unavailable } from './screen.js';
+import type { Disputed, DoorList, Everything, Following, Found, Home, ThingView, WrongChoices } from '../../service/src/api-types.js';
+import { ABOUT, API, details, doorScreen, everythingScreen, findScreen, homeScreen, pathOf, routeOf, thingScreen, why, type Asked, type Over, type Route, type Unavailable } from './screen.js';
 
 /**
  * What the shell runs in the app's worker (the manifest's `frontend.entry`): `start(ctx)`, once, with
- * the person, the floor and the calls the bridge carries. The host owns the URL: `/` finds a thing,
- * `/things/<id>` is its page and `/things/<id>/all` everything known of it. A new floor starts the
+ * the person, the floor and the calls the bridge carries. The host owns the URL: `/` is home, the door
+ * gallery; `/find` finds a thing; `/doors/<id>` is what is behind a door; `/things/<id>` is a thing's page
+ * and `/things/<id>/all` everything known of it. A new floor starts the
  * worker again, so nothing here outlives one floor.
  */
 export default defineApp((ctx) => {
-  let route: Route = { kind: 'find' };
+  let route: Route = { kind: 'home' };
+  let home: Asked<Home> = { kind: 'idle' };
+  let door: Asked<DoorList> = { kind: 'idle' };
   let query = '';
   let found: Asked<Found> = { kind: 'idle' };
   let thing: Asked<ThingView> = { kind: 'idle' };
@@ -24,7 +27,11 @@ export default defineApp((ctx) => {
         ? thingScreen(thing, { following, over }, { open, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
         : route.kind === 'all'
           ? everythingScreen(all, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open, retry: () => void read(route) })
-          : findScreen(query, found, { find: (q) => void find(q), open }),
+          : route.kind === 'door'
+            ? doorScreen(door, { home: () => go({ kind: 'home' }), open, retry: () => void read(route) })
+            : route.kind === 'home'
+              ? homeScreen(home, { find: (q) => void seek(q), open, door: (id) => go({ kind: 'door', id }), retry: () => void read(route) })
+              : findScreen(query, found, { find: (q) => void find(q), open }),
     );
 
   // Through the gateway, which adds the person's token, the floor and the app: the worker never sees them.
@@ -53,10 +60,34 @@ export default defineApp((ctx) => {
     draw();
   };
 
+  // Asked on the home page's line: to the find page, with what was asked.
+  const seek = (q: string) => {
+    go({ kind: 'find' });
+    void find(q);
+  };
+
   const read = async (at: Route) => {
     if (at.kind === 'find') return;
     const mine = ++asking;
     over = { kind: 'none' };
+    if (at.kind === 'home') {
+      home = { kind: 'asking' };
+      ctx.frame.set({ title: 'Data Atlas' });
+      draw();
+      const answer = await ask<Home>('/home');
+      if (mine !== asking) return;
+      home = answer;
+      return draw();
+    }
+    if (at.kind === 'door') {
+      door = { kind: 'asking' };
+      draw();
+      const answer = await ask<DoorList>(`/doors/${encodeURIComponent(at.id)}`);
+      if (mine !== asking) return;
+      door = answer;
+      ctx.frame.set({ title: answer.kind === 'answered' ? answer.value.heading : 'Data Atlas' });
+      return draw();
+    }
     if (at.kind === 'all') {
       all = { kind: 'asking' };
       draw();

@@ -3,6 +3,8 @@ import { appServer, packageVersion, peopleFor, Problem, readManifest, serviceFas
 import {
   disputeAskSchema,
   disputedSchema,
+  doorListSchema,
+  homeSchema,
   everythingSchema,
   followingSchema,
   foundSchema,
@@ -10,6 +12,8 @@ import {
   wrongChoicesSchema,
   type DisputeAsk,
   type Disputed,
+  type DoorList,
+  type Home,
   type Everything,
   type Following,
   type Found,
@@ -19,6 +23,7 @@ import {
 import { memoryEvents, partEvents, type EventsKept } from './events.ts';
 import { everything, wrongLines } from './everything.ts';
 import { memoryFollows, type Follows } from './follows.ts';
+import { doorList, home } from './home.ts';
 import { delegationOf, gatewayKnowledge, KnowledgeRefused, type Knowledge } from './knowledge.ts';
 import { openApi } from './openapi.ts';
 import { choose, rulesFor, shownBeliefs, toView, words, type KBelief, type ThingInput } from './shape.ts';
@@ -48,7 +53,8 @@ export interface Options {
   env?: Record<string, string | undefined>;
 }
 
-export const buildApp = async ({ manifest = readManifest(import.meta.url), callers, events = memoryEvents(), follows = memoryFollows(), knowledge, directory, now = () => new Date(), env = process.env }: Options = {}) => {
+export const buildApp = async ({ manifest = readManifest(import.meta.url), callers, events = memoryEvents(), follows: kept, knowledge, directory, now = () => new Date(), env = process.env }: Options = {}) => {
+  const follows = kept ?? memoryFollows(now);
   const app = Fastify(serviceFastifyOptions());
   await appServer(app, { manifest, version, api: API_VERSION, callers });
   const caller = signedInCaller(manifest);
@@ -173,6 +179,28 @@ export const buildApp = async ({ manifest = readManifest(import.meta.url), calle
         const { person, floor } = standing(req);
         await follows.unfollow(person.id, floor, req.params.id);
         return { thing: req.params.id, following: false };
+      });
+
+      // Home: the doors, what waits behind each, and what the person keeps an eye on. The shell lights the doors.
+      app.get('/home', { schema: { response: { 200: homeSchema } } }, async (req): Promise<Home> => {
+        const { person, floor, kg } = standing(req);
+        try {
+          return await home(kg, follows, person.id, floor);
+        } catch (err) {
+          return refused(err);
+        }
+      });
+      // What is behind one door.
+      app.get<{ Params: { id: string } }>('/doors/:id', { schema: { response: { 200: doorListSchema } } }, async (req): Promise<DoorList> => {
+        const { person, floor, kg } = standing(req);
+        let list: DoorList | undefined;
+        try {
+          list = await doorList(kg, follows, person.id, floor, req.params.id);
+        } catch (err) {
+          return refused(err);
+        }
+        if (!list) throw new Problem(404, 'not_found', 'Data Atlas has no door by that name.');
+        return list;
       });
 
       // Things whose names match what the person typed, best first.
