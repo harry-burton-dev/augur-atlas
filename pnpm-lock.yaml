@@ -37,8 +37,8 @@ importers:
         version: '@harry-burton-dev/augur-mfe-sdk@3.1.0(msw@2.15.0(@types/node@22.20.5)(typescript@5.9.3))'
     devDependencies:
       '@augur/app-kit':
-        specifier: npm:@harry-burton-dev/augur-app-kit@^0.21.0
-        version: '@harry-burton-dev/augur-app-kit@0.21.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
+        specifier: npm:@harry-burton-dev/augur-app-kit@^0.22.0
+        version: '@harry-burton-dev/augur-app-kit@0.22.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -388,8 +388,8 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@harry-burton-dev/augur-app-kit@0.21.0':
-    resolution: {integrity: sha512-K9/SEOBb1zHSq5fN9/BgObYI0xDRkAN2+6YPFkq9jfwRkpPeay+PROUv3kSoxzFvbhq8EPJHu8EtkL3sz8KF3g==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-kit/0.21.0/f371f7a2e8da02cf5c44e8971f00801244e5dba1}
+  '@harry-burton-dev/augur-app-kit@0.22.0':
+    resolution: {integrity: sha512-9T6PBoKSqQdSffCVDRoq2TUIHdVsa/7YGQKR844H1q0xdMAq3bJMMReq4L/l6c6eaxocFHVuN3RnkTVHgSH3rw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-kit/0.22.0/bfcc6dbe16a8ed3fb2e21bcf9cfbef0b02c20837}
     peerDependencies:
       react: ^19.3.1
       react-dom: ^19.3.1
@@ -2858,7 +2858,7 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@harry-burton-dev/augur-app-kit@0.21.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@harry-burton-dev/augur-app-kit@0.22.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@augur/kit-common': '@harry-burton-dev/augur-kit-common@0.18.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
       '@internationalized/date': 3.12.4
