@@ -1,7 +1,7 @@
 import type { QuillRemoteElementName, QuillRemoteEvents, QuillRemoteProperties } from '@augur/app-kit/remote';
 import type { AppContext, RemoteElement, RemoteNode } from '@augur/mfe-sdk/sdk3';
 import manifest from '../../manifest.json';
-import type { Everything, Found, ThingView, WrongChoices } from '../../service/src/api-types.js';
+import type { DoorList, Everything, Found, Home, ThingView, WrongChoices } from '../../service/src/api-types.js';
 
 /**
  * What the app draws: Quill's remote elements by name, with their props (`@augur/app-kit/remote` types
@@ -22,20 +22,67 @@ export const ABOUT = { details: 'details' } as const;
 /** Where the gateway sends the app's calls: its own inbound part, at its manifest id. */
 export const API = `/api/${manifest.id}/v1`;
 
-/** Where the app is, below `/<id>`: finding a thing, one thing's page, or everything known of it. */
-export type Route = { kind: 'find' } | { kind: 'thing'; id: string } | { kind: 'all'; id: string };
+/** Where the app is, below `/<id>`: home, finding a thing, what is behind a door, one thing's page, or everything known of it. */
+export type Route = { kind: 'home' } | { kind: 'find' } | { kind: 'door'; id: string } | { kind: 'thing'; id: string } | { kind: 'all'; id: string };
 export const routeOf = (path: string): Route => {
+  if (/^\/find\/?$/.test(path)) return { kind: 'find' };
+  const door = /^\/doors\/([^/]+)\/?$/.exec(path);
+  if (door) return { kind: 'door', id: decodeURIComponent(door[1]!) };
   const at = /^\/things\/([^/]+)(\/all)?\/?$/.exec(path);
-  if (!at) return { kind: 'find' };
+  if (!at) return { kind: 'home' };
   const id = decodeURIComponent(at[1]!);
   return at[2] ? { kind: 'all', id } : { kind: 'thing', id };
 };
-export const pathOf = (route: Route) => (route.kind === 'find' ? '/' : `/things/${encodeURIComponent(route.id)}${route.kind === 'all' ? '/all' : ''}`);
+export const pathOf = (route: Route) =>
+  route.kind === 'home'
+    ? '/'
+    : route.kind === 'find'
+      ? '/find'
+      : route.kind === 'door'
+        ? `/doors/${encodeURIComponent(route.id)}`
+        : `/things/${encodeURIComponent(route.id)}${route.kind === 'all' ? '/all' : ''}`;
 
 /** A call's state: asking, answered, or failed with the sentence to show. */
 export type Asked<T> = { kind: 'idle' } | { kind: 'asking' } | { kind: 'answered'; value: T } | { kind: 'failed'; why: string };
 
-/** Finding a thing: one box, then what matches. The home door gallery comes later. */
+/**
+ * Home: the door gallery. The ask line on top finds a thing; the doors are the service's configuration
+ * (service/src/home.ts), and the shell lights each from the signals the service read, so a door is added there.
+ */
+export const homeScreen = (home: Asked<Home>, on: { find: (q: string) => void; open: (id: string) => void; door: (id: string) => void; retry: () => void }): RemoteNode =>
+  home.kind === 'failed'
+    ? quill('quill-state', { kind: 'error', heading: 'Data Atlas can’t show its ways in', body: home.why, action: 'Try again', size: 'region', onAction: on.retry })
+    : quill('quill-door-gallery', {
+        label: 'Ways in',
+        doors: home.kind === 'answered' ? (home.value.doors as QuillRemoteProperties['quill-door-gallery']['doors']) : [],
+        signals: home.kind === 'answered' ? home.value.signals : [],
+        loading: home.kind !== 'answered',
+        firstDay: home.kind === 'answered' && home.value.firstDay,
+        ask: {
+          label: 'What do you need?',
+          placeholder: 'A ship, a place, a person, a project',
+          go: 'Find',
+          recentsLabel: 'You keep an eye on',
+          recents: home.kind === 'answered' ? home.value.following.slice(0, 5) : [],
+        },
+        onOpen: on.door,
+        onAsk: on.find,
+        onRecent: on.open,
+      });
+
+/** What is behind one door: a plain list of things, each opening its page. */
+export const doorScreen = (list: Asked<DoorList>, on: { home: () => void; open: (id: string) => void; retry: () => void }): RemoteNode =>
+  list.kind === 'answered'
+    ? quill(
+        'quill-page-head',
+        { eyebrow: 'Ways in', heading: list.value.heading, trail: [{ id: 'home', label: 'Ways in' }], onTrail: on.home },
+        quill('quill-list', { label: list.value.heading, noun: ['thing', 'things'], items: list.value.items, empty: list.value.empty, onOpen: on.open }),
+      )
+    : list.kind === 'failed'
+      ? quill('quill-state', { kind: 'error', heading: 'Data Atlas can’t show what is behind this door', body: list.why, action: 'Try again', size: 'region', onAction: on.retry })
+      : quill('quill-state', { kind: 'loading', heading: 'Looking behind the door', size: 'region' });
+
+/** Finding a thing: one box, then what matches. */
 export const findScreen = (query: string, found: Asked<Found>, on: { find: (q: string) => void; open: (id: string) => void }): RemoteNode => [
   quill('quill-text-field', { label: 'Find a thing', type: 'search', value: query, placeholder: 'A ship, a place, a person, a project', busy: found.kind === 'asking', onCommit: on.find }),
   found.kind === 'idle'

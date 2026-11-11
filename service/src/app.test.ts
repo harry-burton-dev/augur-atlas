@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { memoryEvents } from './events.ts';
+import { memoryFollows } from './follows.ts';
 import { KnowledgeRefused, memoryKnowledge, type Acted, type Knowledge, type KnowledgeStore } from './knowledge.ts';
 
 const manifest = readManifest(import.meta.url);
@@ -130,7 +131,7 @@ describe('the service', () => {
     const res = await app.inject({ remoteAddress: fromGateway, method: 'GET', url: `/${(manifest.api as { openapi: string }).openapi}` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ openapi: expect.stringMatching(/^3\./), info: { title: manifest.name, version: packageVersion(import.meta.url) } });
-    expect(Object.keys(res.json().paths)).toEqual(['/v1/things/{id}', '/v1/things/{id}/everything', '/v1/things/{id}/wrong', '/v1/things/{id}/disputes', '/v1/follows/{id}', '/v1/find']);
+    expect(Object.keys(res.json().paths)).toEqual(['/v1/things/{id}', '/v1/things/{id}/everything', '/v1/things/{id}/wrong', '/v1/things/{id}/disputes', '/v1/follows/{id}', '/v1/home', '/v1/doors/{id}', '/v1/find']);
   });
 });
 
@@ -199,6 +200,50 @@ describe('everything we know, and what a person does about it', () => {
     expect((await call('GET')).json().following).toBe(false);
     // Nobody learns of a thing out of sight by following it.
     expect((await call('PUT', 'nowhere')).statusCode).toBe(404);
+  });
+});
+
+describe('home: the door gallery', () => {
+  it('gives the doors and, on a first day, says nothing is followed yet', async () => {
+    const { app, gateway } = await behindGateway();
+    const res = await app.inject({ remoteAddress: fromGateway, method: 'GET', url: '/v1/home', headers: await delegated(gateway) });
+    expect(res.statusCode).toBe(200);
+    const home = res.json();
+    expect(home.doors.map((d: { id: string }) => d.id)).toEqual(['get-ready', 'changed', 'put-right', 'keep-an-eye']);
+    // No calendar: the meeting door stays and says why.
+    expect(home.doors[0].unavailable).toEqual({ why: 'AUGUR has no calendar yet', who: 'A later AUGUR release' });
+    expect(home.firstDay).toBe(true);
+    expect(home.following).toEqual([]);
+    // Two answers at once on this floor, by the thing's name, never its id.
+    expect(home.signals).toContainEqual({ kind: 'contradiction', reason: expect.stringMatching(/^MV Saltmarsh Heron: two answers for /), about: 'mv-saltmarsh-heron' });
+  });
+
+  it('says what changed on what the person keeps an eye on, and lists it behind its door', async () => {
+    const { app, gateway } = await behindGateway();
+    const call = async (method: 'GET' | 'PUT', url: string) => app.inject({ remoteAddress: fromGateway, method, url, headers: await delegated(gateway) });
+    // Followed "now" (Fri 20 Nov), so only what was recorded later is news: nothing.
+    await call('PUT', '/v1/follows/mv-saltmarsh-heron');
+    const home = (await call('GET', '/v1/home')).json();
+    expect(home.firstDay).toBe(false);
+    expect(home.following).toEqual([{ id: 'mv-saltmarsh-heron', label: 'MV Saltmarsh Heron' }]);
+    expect(home.signals.filter((s: { kind: string }) => s.kind === 'change')).toEqual([]);
+    const eye = (await call('GET', '/v1/doors/keep-an-eye')).json();
+    expect(eye.items).toEqual([{ id: 'mv-saltmarsh-heron', title: 'MV Saltmarsh Heron', detail: expect.any(String) }]);
+    const right = (await call('GET', '/v1/doors/put-right')).json();
+    expect(right.items.map((i: { id: string }) => i.id)).toContain('mv-saltmarsh-heron');
+    // One row per thing, however many answers disagree.
+    expect(new Set(right.items.map((i: { id: string }) => i.id)).size).toBe(right.items.length);
+    expect((await call('GET', '/v1/doors/get-ready')).json()).toMatchObject({ items: [], empty: 'AUGUR has no calendar yet. A later AUGUR release can change that.' });
+    expect((await call('GET', '/v1/doors/nowhere')).statusCode).toBe(404);
+  });
+
+  it('counts lines recorded since the person began keeping an eye', async () => {
+    const gateway = callerSigner();
+    const follows = memoryFollows(() => new Date('2026-11-10T00:00:00Z'));
+    const app = await buildApp({ manifest, callers: callerCheckFor(gateway, callerAudienceOf(manifest)), knowledge: () => memoryKnowledge(store), follows, directory, now: () => new Date(store.now) });
+    await follows.follow('alex', 'ws-team', 'mv-saltmarsh-heron');
+    const home = (await app.inject({ remoteAddress: fromGateway, method: 'GET', url: '/v1/home', headers: await delegated(gateway) })).json();
+    expect(home.signals).toContainEqual({ kind: 'change', reason: expect.stringMatching(/^MV Saltmarsh Heron: \d+ new lines?$/), about: 'mv-saltmarsh-heron' });
   });
 });
 

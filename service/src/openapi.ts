@@ -1,5 +1,5 @@
 import type { AppManifest } from '@augur/service-kit';
-import { disputeAskSchema, disputedSchema, everythingSchema, followingSchema, foundSchema, thingViewSchema, wrongChoicesSchema } from './api-types.ts';
+import { disputeAskSchema, disputedSchema, doorListSchema, everythingSchema, homeSchema, followingSchema, foundSchema, thingViewSchema, wrongChoicesSchema } from './api-types.ts';
 
 /**
  * The service's OpenAPI document, served at the manifest's `api.openapi` path; the registry reads it
@@ -63,6 +63,17 @@ export const openApi = (manifest: AppManifest, version: string, api: string) => 
       get: { operationId: 'getFollowing', summary: 'Whether the person keeps an eye on a thing, on this floor', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Whether', content: { 'application/json': { schema: followingSchema } } } } },
       put: { operationId: 'follow', summary: 'Keep an eye on a thing in sight', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Kept', content: { 'application/json': { schema: followingSchema } } }, 404: { description: 'Not in sight', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } } } },
       delete: { operationId: 'unfollow', summary: 'Stop keeping an eye on it', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Stopped', content: { 'application/json': { schema: followingSchema } } } } },
+    },
+    [`/${api}/home`]: {
+      get: { operationId: 'getHome', summary: 'The home door gallery: the doors, what waits behind them, and what the person keeps an eye on', responses: { 200: { description: 'The home', content: { 'application/json': { schema: homeSchema } } } } },
+    },
+    [`/${api}/doors/{id}`]: {
+      get: {
+        operationId: 'getDoor',
+        summary: 'What is behind one door, as a list of things',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { 200: { description: 'The list', content: { 'application/json': { schema: doorListSchema } } }, 404: { description: 'No such door', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } } },
+      },
     },
     [`/${api}/find`]: {
       get: {

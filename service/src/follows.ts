@@ -4,23 +4,29 @@ import type { DatabasePool } from '@augur/service-kit';
  * What a person keeps an eye on: Data Atlas's own data (Data Atlas PDR-002), never the knowledge graph's.
  * One row per person, floor and thing, so the same thing can be followed from a team floor and from one's own.
  */
+export interface Followed {
+  thing: string;
+  /** An ISO time. */
+  since: string;
+}
+
 export interface Follows {
   has(person: string, floor: string, thing: string): Promise<boolean>;
   follow(person: string, floor: string, thing: string): Promise<void>;
   unfollow(person: string, floor: string, thing: string): Promise<void>;
-  /** Newest first. */
-  list(person: string, floor: string): Promise<string[]>;
+  /** Newest first, each with when the person started keeping an eye on it. */
+  list(person: string, floor: string): Promise<Followed[]>;
 }
 
 /** Kept in memory: for tests and `pnpm dev:app`. Gone on a restart. */
-export const memoryFollows = (): Follows => {
-  const kept = new Map<string, string[]>();
+export const memoryFollows = (now: () => Date = () => new Date()): Follows => {
+  const kept = new Map<string, Followed[]>();
   const at = (person: string, floor: string) => `${person}\u0000${floor}`;
   const of = (person: string, floor: string) => kept.get(at(person, floor)) ?? [];
   return {
-    has: async (person, floor, thing) => of(person, floor).includes(thing),
-    follow: async (person, floor, thing) => void kept.set(at(person, floor), [thing, ...of(person, floor).filter((t) => t !== thing)]),
-    unfollow: async (person, floor, thing) => void kept.set(at(person, floor), of(person, floor).filter((t) => t !== thing)),
+    has: async (person, floor, thing) => of(person, floor).some((f) => f.thing === thing),
+    follow: async (person, floor, thing) => void kept.set(at(person, floor), [{ thing, since: now().toISOString() }, ...of(person, floor).filter((f) => f.thing !== thing)]),
+    unfollow: async (person, floor, thing) => void kept.set(at(person, floor), of(person, floor).filter((f) => f.thing !== thing)),
     list: async (person, floor) => of(person, floor),
   };
 };
@@ -34,5 +40,6 @@ export const postgresFollows = (db: Pick<DatabasePool, 'query'>): Follows => ({
   unfollow: async (person, floor, thing) => {
     await db.query('delete from follows where person = $1 and floor = $2 and thing = $3', [person, floor, thing]);
   },
-  list: async (person, floor) => (await db.query<{ thing: string }>('select thing from follows where person = $1 and floor = $2 order by since desc', [person, floor])).rows.map((r) => r.thing),
+  list: async (person, floor) =>
+    (await db.query<{ thing: string; since: Date | string }>('select thing, since from follows where person = $1 and floor = $2 order by since desc', [person, floor])).rows.map((r) => ({ thing: r.thing, since: new Date(r.since).toISOString() })),
 });
