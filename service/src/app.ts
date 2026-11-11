@@ -23,6 +23,7 @@ import {
 import { memoryEvents, partEvents, type EventsKept } from './events.ts';
 import { everything, wrongLines } from './everything.ts';
 import { memoryFollows, type Follows } from './follows.ts';
+import { memoryUses, type Uses } from './uses.ts';
 import { doorList, home } from './home.ts';
 import { delegationOf, gatewayKnowledge, KnowledgeRefused, type Knowledge } from './knowledge.ts';
 import { openApi } from './openapi.ts';
@@ -42,6 +43,8 @@ export interface Options {
   events?: EventsKept;
   /** What people keep an eye on: Data Atlas's own data; in memory without a database. */
   follows?: Follows;
+  /** How often people on a floor follow each link from a kind of thing's page; in memory without a database. */
+  uses?: Uses;
   /** Background and scheduled jobs; startAppService passes them in. */
   jobs?: Jobs;
   /** The knowledge graph for one call, as the person: through the gateway by default, a store in tests. */
@@ -53,7 +56,7 @@ export interface Options {
   env?: Record<string, string | undefined>;
 }
 
-export const buildApp = async ({ manifest = readManifest(import.meta.url), callers, events = memoryEvents(), follows: kept, knowledge, directory, now = () => new Date(), env = process.env }: Options = {}) => {
+export const buildApp = async ({ manifest = readManifest(import.meta.url), callers, events = memoryEvents(), follows: kept, uses = memoryUses(), knowledge, directory, now = () => new Date(), env = process.env }: Options = {}) => {
   const follows = kept ?? memoryFollows(now);
   const app = Fastify(serviceFastifyOptions());
   await appServer(app, { manifest, version, api: API_VERSION, callers });
@@ -86,16 +89,30 @@ export const buildApp = async ({ manifest = readManifest(import.meta.url), calle
     // What is coming here: the beliefs of things whose "next" links point at it, so "Due here" can say when.
     const comers = [...new Set(around.edges.filter((b) => b.object === entity.id && b.subject !== entity.id).map((b) => b.subject))].slice(0, 6);
     const neighbourBeliefs = (await Promise.all(comers.map((c) => kg.beliefs(floor, c)))).flat();
-    return { entity, beliefs, edges: around.edges, nodes: around.nodes, conflicts, neighbourBeliefs, ...ontology, reports: Math.max(0, ...beliefs.map((b) => b.evidence.sources)), now: now() };
+    const counted = await uses.counts(floor, entity.class).catch(() => ({ visits: 0, links: {} }));
+    return { entity, beliefs, edges: around.edges, nodes: around.nodes, conflicts, neighbourBeliefs, ...ontology, reports: Math.max(0, ...beliefs.map((b) => b.evidence.sources)), now: now(), uses: counted };
+  };
+
+  /** The person came here from `from`'s page: count the link they followed, for things of `from`'s kind on this floor. */
+  const countUse = (floor: string, input: ThingInput, from: string) => {
+    const kind = input.nodes.find((n) => n.id === from)?.class;
+    if (!kind) return;
+    // Every link between the two counts: the page shows the thing once, by whichever link ranks first. Each is
+    // seen from `from`'s page: its own link out, or one pointing at it.
+    const links = input.edges.filter((b) => b.kind === 'link' && ((b.subject === from && b.object === input.entity.id) || (b.object === from && b.subject === input.entity.id)));
+    const ways = [...new Map(links.map((b) => [`${b.subject === from ? 'out' : 'in'} ${b.predicate}`, [b.subject === from ? 'out' : 'in', b.predicate] as const])).values()];
+    if (ways.length) void uses.opened(floor, kind, ways).catch(() => undefined);
   };
 
   await app.register(
     async (app) => {
       // One thing in the one shape (App patterns, "A thing's page"), filled by Atlas's rules from what the person can see.
-      app.get<{ Params: { id: string } }>('/things/:id', { schema: { response: { 200: thingViewSchema } } }, async (req): Promise<ThingView> => {
+      // `?from=<id>`: opened from that thing's page, so the link followed counts towards use-ranking.
+      app.get<{ Params: { id: string }; Querystring: { from?: string } }>('/things/:id', { schema: { response: { 200: thingViewSchema } } }, async (req): Promise<ThingView> => {
         const { person, floor, kg } = standing(req);
         try {
           const input = await read(kg, floor, req.params.id);
+          if (req.query.from) countUse(floor, input, req.query.from);
           const rules = rulesFor(input);
           const choice = choose(input, rules);
           // Sources only for the lines that show at rest.

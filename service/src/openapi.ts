@@ -14,7 +14,10 @@ export const openApi = (manifest: AppManifest, version: string, api: string) => 
       get: {
         operationId: 'getThing',
         summary: 'One thing in the one shape: what it is, the answer, what is wrong, key facts and what is around it',
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'from', in: 'query', required: false, description: 'The thing whose page it was opened from: the link followed counts towards use-ranking on this floor', schema: { type: 'string' } },
+        ],
         responses: {
           200: { description: 'The thing, as the person sees it from this floor', content: { 'application/json': { schema: thingViewSchema } } },
           401: { description: 'Nobody signed in', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } },

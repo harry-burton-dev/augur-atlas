@@ -90,7 +90,7 @@ const fakeService = () => {
     if (path.endsWith('/everything')) return Response.json(everything);
     if (path.endsWith('/wrong')) return Response.json({ lines: [{ belief: 'b1', line: 'Status: Delayed' }, { belief: 'b2', line: 'At: Port of Kessick' }] });
     if (path.endsWith('/disputes')) return Response.json({ dispute: 'd1' });
-    if (path.endsWith('/things/mv-saltmarsh-heron') || path.endsWith('/things/port-of-kessick')) return Response.json(heron);
+    if (/\/things\/(mv-saltmarsh-heron|port-of-kessick)(\?from=[^/]+)?$/.test(path)) return Response.json(heron);
     return Response.json({ status: 404, detail: 'Nothing by that name is in sight from this floor.' }, { status: 404 });
   };
 };
@@ -207,7 +207,8 @@ describe('the app', () => {
     (thingPage(shell.screen)!.props!.onOpen as (id: string) => void)('port-of-kessick');
     await settle();
     expect(shell.navigated).toEqual(['/things/port-of-kessick']);
-    expect(shell.fetched).toContain(`/api/${manifest.id}/v1/things/port-of-kessick`);
+    // It says which page it came from, so the link counts towards use-ranking.
+    expect(shell.fetched).toContain(`/api/${manifest.id}/v1/things/port-of-kessick?from=${heron.id}`);
     shell.moved!('/find');
     expect(find(shell.screen)).toBeDefined();
   });
