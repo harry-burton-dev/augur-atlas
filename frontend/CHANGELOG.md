@@ -1,5 +1,17 @@
 # @apps/atlas-frontend
 
+## 0.5.0
+
+### Minor Changes
+
+- 64a3094: Data Atlas starts again on the app contract (contract 3). It reads the knowledge graph as the person, through the gateway (`knowledge:read`), and shows each thing in the kit's one shape: what it is, the answer (Now, Next, What or When), what's wrong, key facts and what is around it, each line with whose report and when. A find box opens things by name. The SDK 1 and 2 app it replaces, with its own facts database, is gone: Data Atlas keeps none of the graph.
+- a9286cf: A thing's page now leads one step on to everything known of it: what is known now, what it is linked to both ways, and what was true before, each line with when it was said and on how many reports. Its actions work. "Keep an eye on it" is kept in Data Atlas's own table, per floor, and the page says so. "Something's wrong" picks a line, takes a reason and disputes it in the knowledge graph as the person (`knowledge:act`), once per press. "Ask about it" and "Send this" stay on the page and say why they aren't here yet.
+
+  The Backstage catalog now lists the knowledge API among what the service calls (app tools 0.6.0).
+
+- bbec42c: Data Atlas opens on a door gallery: "What do you need?" on top finds a thing, and below it four ways in. "See what has changed" lights up when something you keep an eye on has new lines, "Put something right" when a thing on your floor has two answers at once, and "Keep an eye on something" lists what you follow. "Get ready for a meeting" stays and says AUGUR has no calendar yet. The shell lights each door from what Data Atlas read; the doors are configuration in `service/src/home.ts`, so adding one is adding it there. Finding a thing moves to `/find`.
+- 9cd5e22: What is around a thing is now ranked by use too (Data Atlas PDR-002). When someone opens a thing from another thing's page, Data Atlas counts the link they followed, for that kind of thing on that floor. It keeps only counts, never who. Once things have been opened five times from a kind's pages, a link that led to them rises, up to three times its cold-start rank when it led to every one. Until then the cold-start ranking holds.
+
 ## 0.4.0
 
 ### Minor Changes
