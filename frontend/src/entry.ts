@@ -1,12 +1,12 @@
 import { defineApp } from '@augur/mfe-sdk/sdk3';
 import type { Disputed, DoorList, Everything, Following, Found, Home, ThingView, WrongChoices } from '../../service/src/api-types.js';
-import { ABOUT, API, details, doorScreen, everythingScreen, findScreen, homeScreen, pathOf, routeOf, thingScreen, why, type Asked, type Over, type Route, type Unavailable } from './screen.js';
+import { ABOUT, API, details, doorScreen, everythingScreen, findScreen, homeScreen, mapScreen, pathOf, routeOf, thingScreen, why, type Asked, type Over, type Route, type Unavailable } from './screen.js';
 
 /**
  * What the shell runs in the app's worker (the manifest's `frontend.entry`): `start(ctx)`, once, with
  * the person, the floor and the calls the bridge carries. The host owns the URL: `/` is home, the door
- * gallery; `/find` finds a thing; `/doors/<id>` is what is behind a door; `/things/<id>` is a thing's page
- * and `/things/<id>/all` everything known of it. A new floor starts the
+ * gallery; `/find` finds a thing; `/doors/<id>` is what is behind a door; `/things/<id>` is a thing's page,
+ * `/things/<id>/all` everything known of it and `/things/<id>/map` the map of what is around it. A new floor starts the
  * worker again, so nothing here outlives one floor.
  */
 export default defineApp((ctx) => {
@@ -25,8 +25,10 @@ export default defineApp((ctx) => {
   const draw = () =>
     ctx.frame.screen.render(
       route.kind === 'thing'
-        ? thingScreen(thing, { following, over }, { open: openFrom, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
-        : route.kind === 'all'
+        ? thingScreen(thing, { following, over }, { open: openFrom, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), map: () => go({ kind: 'map', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
+        : route.kind === 'map'
+          ? mapScreen(thing, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open: openFrom, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), retry: () => void read(route) })
+          : route.kind === 'all'
           ? everythingScreen(all, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open: openFrom, retry: () => void read(route) })
           : route.kind === 'door'
             ? doorScreen(door, { home: () => go({ kind: 'home' }), open, retry: () => void read(route) })
@@ -96,6 +98,18 @@ export default defineApp((ctx) => {
       if (mine !== asking) return;
       all = answer;
       ctx.frame.set({ title: answer.kind === 'answered' ? `Everything known of ${answer.value.name}` : 'Everything we know' });
+      return draw();
+    }
+    if (at.kind === 'map') {
+      // From its page, the thing is already read: draw the map from it. Opened straight at the map, read it.
+      if (thing.kind !== 'answered' || thing.value.id !== at.id) {
+        thing = { kind: 'asking' };
+        draw();
+        const answer = await ask<ThingView>(thingPath(at.id));
+        if (mine !== asking) return;
+        thing = answer;
+      }
+      ctx.frame.set({ title: thing.kind === 'answered' ? `What is around ${thing.value.name}` : 'What is around it' });
       return draw();
     }
     thing = { kind: 'asking' };
@@ -189,9 +203,9 @@ export default defineApp((ctx) => {
   function open(id: string) {
     go({ kind: 'thing', id });
   }
-  // From a thing's page, or everything known of it, to a thing linked to it.
+  // From a thing's page, everything known of it or its map, to a thing linked to it.
   function openFrom(id: string) {
-    if (route.kind === 'thing' || route.kind === 'all') cameFrom = route.id;
+    if (route.kind === 'thing' || route.kind === 'all' || route.kind === 'map') cameFrom = route.id;
     open(id);
   }
 

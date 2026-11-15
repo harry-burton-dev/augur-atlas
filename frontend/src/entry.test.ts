@@ -213,6 +213,39 @@ describe('the app', () => {
     expect(find(shell.screen)).toBeDefined();
   });
 
+  it('offers the map of what is around a thing, draws it from the page it came from, and follows it', async () => {
+    const { ctx, shell } = fakeShell(service, `/things/${heron.id}`);
+    await start(ctx);
+    await settle();
+    const page = thingPage(shell.screen)!;
+    expect(page.props!.map).toBe(true);
+    (page.props!.onMap as () => void)();
+    await settle();
+    expect(shell.navigated).toEqual([`/things/${heron.id}/map`]);
+    // Drawn from the page already read: no second call for the thing.
+    expect(shell.fetched.filter((p) => p.includes(`/things/${heron.id}`))).toHaveLength(1);
+    const map = elements(shell.screen).find((e) => e.type === 'quill-thing-map')!;
+    expect(map.props!.thing).toEqual({ id: heron.id, name: heron.name, kind: heron.kind });
+    expect(map.props!.around).toEqual(heron.around);
+    expect(shell.pane.title).toBe(`What is around ${heron.name}`);
+    (map.props!.onOpen as (id: string) => void)('port-of-kessick');
+    await settle();
+    // A link followed from the map counts towards use-ranking, as from the page.
+    expect(shell.fetched).toContain(`/api/${manifest.id}/v1/things/port-of-kessick?from=${heron.id}`);
+  });
+
+  it('reads the thing when opened straight at its map, and goes back to its page', async () => {
+    const { ctx, shell } = fakeShell(service, `/things/${heron.id}/map`);
+    await start(ctx);
+    await settle();
+    expect(shell.fetched).toEqual([`/api/${manifest.id}/v1/things/${heron.id}`]);
+    const map = elements(shell.screen).find((e) => e.type === 'quill-thing-map')!;
+    (map.props!.onBack as () => void)();
+    await settle();
+    expect(shell.navigated).toEqual([`/things/${heron.id}`]);
+    expect(thingPage(shell.screen)).toBeDefined();
+  });
+
   it('says why when a thing can’t be shown, with who can change it, and tries again', async () => {
     const { ctx, shell } = fakeShell(refusal(403, 'Data Atlas may not read the knowledge graph here.'), `/things/${heron.id}`);
     await start(ctx);
