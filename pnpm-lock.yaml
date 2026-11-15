@@ -37,8 +37,8 @@ importers:
         version: '@harry-burton-dev/augur-mfe-sdk@3.1.0(msw@2.15.0(@types/node@22.20.5)(typescript@5.9.3))'
     devDependencies:
       '@augur/app-kit':
-        specifier: npm:@harry-burton-dev/augur-app-kit@^0.22.0
-        version: '@harry-burton-dev/augur-app-kit@0.22.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
+        specifier: npm:@harry-burton-dev/augur-app-kit@^0.23.0
+        version: '@harry-burton-dev/augur-app-kit@0.23.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -388,8 +388,8 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@harry-burton-dev/augur-app-kit@0.22.0':
-    resolution: {integrity: sha512-9T6PBoKSqQdSffCVDRoq2TUIHdVsa/7YGQKR844H1q0xdMAq3bJMMReq4L/l6c6eaxocFHVuN3RnkTVHgSH3rw==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-kit/0.22.0/bfcc6dbe16a8ed3fb2e21bcf9cfbef0b02c20837}
+  '@harry-burton-dev/augur-app-kit@0.23.0':
+    resolution: {integrity: sha512-FSp6A0mAO8P/L/uLQKcG/w1PdgdHT9+Cxcj3Xlno49T7V3Nl/rdnAAq3uI8TiaKaxUmEEmCSfDCRx3PFwfGtdg==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-kit/0.23.0/49cc9a85d2db28eb80af58de96ceaa472b353c80}
     peerDependencies:
       react: ^19.3.1
       react-dom: ^19.3.1
@@ -398,8 +398,8 @@ packages:
     resolution: {integrity: sha512-Wg7BJhSkAQB4osOIOolBnjqUMGHomAB/VgmeydHF7WW7xNoCS5Fjs1a7xUCqaH4PplGIDcx7IysgSi7t6niECg==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-app-tools/0.6.0/61778dd2b437d14540eb8931e7d3dab0dd8a830c}
     hasBin: true
 
-  '@harry-burton-dev/augur-kit-common@0.18.0':
-    resolution: {integrity: sha512-yJXIbI8H50w/5O3HF7Z/JfLeBFz7aUtlMy30l71YCT40daU9fqW+k2AnvXAu/k/fVIZwebOcv4jy0zVfkhwJBg==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-kit-common/0.18.0/1394c5a5b2fa95943bf667284102f4fcb8a13c74}
+  '@harry-burton-dev/augur-kit-common@0.21.0':
+    resolution: {integrity: sha512-i/pKGpYC/UmrXpheBSybVWN3xbPL23c8rm3Hugv9pmq/R+WAJk9Y7L9RhEVqR7IDcUjPWbCFRfDRJQ+GFJwfbQ==, tarball: https://npm.pkg.github.com/download/@harry-burton-dev/augur-kit-common/0.21.0/4b29957d9e06eeaf002e7c28e51f06dbcbb5e1b9}
     peerDependencies:
       react: ^19.3.1
       react-dom: ^19.3.1
@@ -2314,6 +2314,7 @@ packages:
 
   tldts-core@7.4.20:
     resolution: {integrity: sha512-C630TWXZCZmLq0F2bW4QqwnaaxCQ/svpAqvJwnC4JvgEM5ohhBnGsEzTLSOXcN+xjz+kEaHS5uoWIw2klnqd0A==}
+    deprecated: Partial release, see https://github.com/remusao/tldts/issues/2735. Use >=7.4.22.
 
   tldts@7.4.19:
     resolution: {integrity: sha512-48dH6aSpQnpbzDUc4vIQZ1VjB8tkK+e8c1yx05/SZK+rkssgjEOlxDd/yU8/a4vGYQ9vRgJr9dwMq9TJ0b3X2Q==}
@@ -2858,9 +2859,9 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@harry-burton-dev/augur-app-kit@0.22.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@harry-burton-dev/augur-app-kit@0.23.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@augur/kit-common': '@harry-burton-dev/augur-kit-common@0.18.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
+      '@augur/kit-common': '@harry-burton-dev/augur-kit-common@0.21.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)'
       '@internationalized/date': 3.12.4
       '@remote-dom/core': 1.12.1
       '@tanstack/react-query': 5.104.4(@types/react@19.3.0)(react@19.3.1)
@@ -2905,7 +2906,7 @@ snapshots:
       - pg-native
       - supports-color
 
-  '@harry-burton-dev/augur-kit-common@0.18.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@harry-burton-dev/augur-kit-common@0.21.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@fontsource/ibm-plex-mono': 5.2.7
       '@fontsource/instrument-sans': 5.2.8
