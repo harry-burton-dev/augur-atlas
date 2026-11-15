@@ -22,16 +22,16 @@ export const ABOUT = { details: 'details' } as const;
 /** Where the gateway sends the app's calls: its own inbound part, at its manifest id. */
 export const API = `/api/${manifest.id}/v1`;
 
-/** Where the app is, below `/<id>`: home, finding a thing, what is behind a door, one thing's page, or everything known of it. */
-export type Route = { kind: 'home' } | { kind: 'find' } | { kind: 'door'; id: string } | { kind: 'thing'; id: string } | { kind: 'all'; id: string };
+/** Where the app is, below `/<id>`: home, finding a thing, what is behind a door, one thing's page, everything known of it, or the map of what is around it. */
+export type Route = { kind: 'home' } | { kind: 'find' } | { kind: 'door'; id: string } | { kind: 'thing'; id: string } | { kind: 'all'; id: string } | { kind: 'map'; id: string };
 export const routeOf = (path: string): Route => {
   if (/^\/find\/?$/.test(path)) return { kind: 'find' };
   const door = /^\/doors\/([^/]+)\/?$/.exec(path);
   if (door) return { kind: 'door', id: decodeURIComponent(door[1]!) };
-  const at = /^\/things\/([^/]+)(\/all)?\/?$/.exec(path);
+  const at = /^\/things\/([^/]+)(?:\/(all|map))?\/?$/.exec(path);
   if (!at) return { kind: 'home' };
   const id = decodeURIComponent(at[1]!);
-  return at[2] ? { kind: 'all', id } : { kind: 'thing', id };
+  return { kind: (at[2] as 'all' | 'map' | undefined) ?? 'thing', id };
 };
 export const pathOf = (route: Route) =>
   route.kind === 'home'
@@ -40,7 +40,7 @@ export const pathOf = (route: Route) =>
       ? '/find'
       : route.kind === 'door'
         ? `/doors/${encodeURIComponent(route.id)}`
-        : `/things/${encodeURIComponent(route.id)}${route.kind === 'all' ? '/all' : ''}`;
+        : `/things/${encodeURIComponent(route.id)}${route.kind === 'thing' ? '' : `/${route.kind}`}`;
 
 /** A call's state: asking, answered, or failed with the sentence to show. */
 export type Asked<T> = { kind: 'idle' } | { kind: 'asking' } | { kind: 'answered'; value: T } | { kind: 'failed'; why: string };
@@ -153,19 +153,33 @@ const unavailableDialog = (action: Unavailable, close: () => void): RemoteNode =
 export const thingScreen = (
   thing: Asked<ThingView>,
   state: { following: boolean; over: Over },
-  on: { open: (id: string) => void; retry: () => void; act: (id: string) => void; everything: () => void; unfollow: () => void; submitWrong: (values: Record<string, unknown>) => void; closeOver: () => void },
+  on: { open: (id: string) => void; retry: () => void; act: (id: string) => void; everything: () => void; map: () => void; unfollow: () => void; submitWrong: (values: Record<string, unknown>) => void; closeOver: () => void },
 ): RemoteNode =>
   thing.kind === 'answered'
     ? [
         state.following ? quill('quill-notice', { tone: 'info', action: 'Stop', onAction: on.unfollow }, 'You keep an eye on this. It will be on your home page when it changes.') : null,
         // The service names the kind's icon from Common's set (shape.ts, iconFor); the host draws an unknown one as a dot.
-        quill('quill-thing-page', { view: thing.value as QuillRemoteProperties['quill-thing-page']['view'], onOpen: on.open, onAction: on.act, onEverything: on.everything }),
+        quill('quill-thing-page', { view: thing.value as QuillRemoteProperties['quill-thing-page']['view'], map: true, onOpen: on.open, onAction: on.act, onEverything: on.everything, onMap: on.map }),
         state.over.kind === 'wrong' ? wrongDialog(state.over, { submit: on.submitWrong, close: on.closeOver }) : null,
         state.over.kind === 'unavailable' ? unavailableDialog(state.over.action, on.closeOver) : null,
       ]
     : thing.kind === 'failed'
       ? quill('quill-state', { kind: 'error', heading: 'Data Atlas can’t show this thing', body: thing.why, action: 'Try again', size: 'region', onAction: on.retry })
       : quill('quill-state', { kind: 'loading', heading: 'Reading what is known', size: 'region' });
+
+/** The map of what is around a thing, one step from its page: the thing in the middle, its neighbours round it by group. */
+export const mapScreen = (thing: Asked<ThingView>, on: { back: () => void; open: (id: string) => void; everything: () => void; retry: () => void }): RemoteNode =>
+  thing.kind === 'answered'
+    ? quill('quill-thing-map', {
+        thing: { id: thing.value.id, name: thing.value.name, kind: thing.value.kind as QuillRemoteProperties['quill-thing-map']['thing']['kind'] },
+        around: thing.value.around,
+        onOpen: on.open,
+        onBack: on.back,
+        onEverything: on.everything,
+      })
+    : thing.kind === 'failed'
+      ? quill('quill-state', { kind: 'error', heading: 'Data Atlas can’t show what is around this thing', body: thing.why, action: 'Try again', size: 'region', onAction: on.retry })
+      : quill('quill-state', { kind: 'loading', heading: 'Reading what is around it', size: 'region' });
 
 const EMPTY: Record<Everything['sections'][number]['key'], string> = {
   now: 'Nothing is known of it now, from this floor.',
