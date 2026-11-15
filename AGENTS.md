@@ -7,7 +7,7 @@ AGENTS.md and the ADRs there before changing how this app reaches the platform.
 
 ## Where to look
 - AUGUR's decisions (ADRs and PDRs) in the Decision register, in the AUGUR handbook on Google Drive
-  (`04 Decisions`, https://drive.google.com/drive/folders/16wXmUMRNP2_vXAlf4kBMF9hCDNUXg7yO), especially 0012 (apps in their own repositories), 0015
+  (`04 Decisions`, https://drive.google.com/drive/folders/16wXmUMRNP2_vXAlf4kBMF9hCDNUXg7yO), especially 0077 (apps in their own repositories), 0015
   (React, Quill, Tailwind), 0047 (how this repository releases), 0055 (one source per API), 0081 and 0099
   (the knowledge graph's ontology and predicate roles), and Data Atlas's PDR-002 (the view spec and use-ranking).
 - App patterns, "A thing's page", in the handbook's `02 Principles`: the shape `service/src/shape.ts` fills.
