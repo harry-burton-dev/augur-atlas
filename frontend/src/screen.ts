@@ -31,7 +31,7 @@ export const routeOf = (path: string): Route => {
   const at = /^\/things\/([^/]+)(?:\/(all|map))?\/?$/.exec(path);
   if (!at) return { kind: 'home' };
   const id = decodeURIComponent(at[1]!);
-  return at[2] === 'all' ? { kind: 'all', id } : at[2] === 'map' ? { kind: 'map', id } : { kind: 'thing', id };
+  return { kind: (at[2] as 'all' | 'map' | undefined) ?? 'thing', id };
 };
 export const pathOf = (route: Route) =>
   route.kind === 'home'
@@ -40,7 +40,7 @@ export const pathOf = (route: Route) =>
       ? '/find'
       : route.kind === 'door'
         ? `/doors/${encodeURIComponent(route.id)}`
-        : `/things/${encodeURIComponent(route.id)}${route.kind === 'all' ? '/all' : route.kind === 'map' ? '/map' : ''}`;
+        : `/things/${encodeURIComponent(route.id)}${route.kind === 'thing' ? '' : `/${route.kind}`}`;
 
 /** A call's state: asking, answered, or failed with the sentence to show. */
 export type Asked<T> = { kind: 'idle' } | { kind: 'asking' } | { kind: 'answered'; value: T } | { kind: 'failed'; why: string };

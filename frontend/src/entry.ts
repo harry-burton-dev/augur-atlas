@@ -21,20 +21,26 @@ export default defineApp((ctx) => {
   let over: Over = { kind: 'none' };
   let asking = 0;
   let cameFrom: string | undefined;
+  // The route id the held thing was read for (the service may answer with another id), and whether the next
+  // read of its page may draw from it: back from its map, which was drawn from that same answer.
+  let heldFor: string | undefined;
+  let keep = false;
 
+  // The thing the route names, on a thing's page, everything known of it or its map.
+  const here = () => (route as { id: string }).id;
   const draw = () =>
     ctx.frame.screen.render(
       route.kind === 'thing'
-        ? thingScreen(thing, { following, over }, { open: openFrom, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), map: () => go({ kind: 'map', id: (route as { id: string }).id }), unfollow: () => void follow(false), submitWrong, closeOver })
+        ? thingScreen(thing, { following, over }, { open: openFrom, retry: () => void read(route), act, everything: () => go({ kind: 'all', id: here() }), map: () => go({ kind: 'map', id: here() }), unfollow: () => void follow(false), submitWrong, closeOver })
         : route.kind === 'map'
-          ? mapScreen(thing, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open: openFrom, everything: () => go({ kind: 'all', id: (route as { id: string }).id }), retry: () => void read(route) })
+          ? mapScreen(thing, { back: backToPage, open: openFrom, everything: () => go({ kind: 'all', id: here() }), retry: () => void read(route) })
           : route.kind === 'all'
-          ? everythingScreen(all, { back: () => go({ kind: 'thing', id: (route as { id: string }).id }), open: openFrom, retry: () => void read(route) })
-          : route.kind === 'door'
-            ? doorScreen(door, { home: () => go({ kind: 'home' }), open, retry: () => void read(route) })
-            : route.kind === 'home'
-              ? homeScreen(home, { find: (q) => void seek(q), open, door: (id) => go({ kind: 'door', id }), retry: () => void read(route) })
-              : findScreen(query, found, { find: (q) => void find(q), open }),
+            ? everythingScreen(all, { back: () => go({ kind: 'thing', id: here() }), open: openFrom, retry: () => void read(route) })
+            : route.kind === 'door'
+              ? doorScreen(door, { home: () => go({ kind: 'home' }), open, retry: () => void read(route) })
+              : route.kind === 'home'
+                ? homeScreen(home, { find: (q) => void seek(q), open, door: (id) => go({ kind: 'door', id }), retry: () => void read(route) })
+                : findScreen(query, found, { find: (q) => void find(q), open }),
     );
 
   // Through the gateway, which adds the person's token, the floor and the app: the worker never sees them.
@@ -102,16 +108,24 @@ export default defineApp((ctx) => {
     }
     if (at.kind === 'map') {
       // From its page, the thing is already read: draw the map from it. Opened straight at the map, read it.
-      if (thing.kind !== 'answered' || thing.value.id !== at.id) {
+      if (thing.kind !== 'answered' || heldFor !== at.id) {
         thing = { kind: 'asking' };
         draw();
-        const answer = await ask<ThingView>(thingPath(at.id));
+        const [answer, eye] = await Promise.all([ask<ThingView>(thingPath(at.id)), ask<Following>(`/follows/${encodeURIComponent(at.id)}`)]);
         if (mine !== asking) return;
         thing = answer;
+        heldFor = at.id;
+        following = eye.kind === 'answered' && eye.value.following;
       }
       ctx.frame.set({ title: thing.kind === 'answered' ? `What is around ${thing.value.name}` : 'What is around it' });
       return draw();
     }
+    if (keep && thing.kind === 'answered' && heldFor === at.id) {
+      keep = false;
+      ctx.frame.set({ title: thing.value.name });
+      return draw();
+    }
+    keep = false;
     thing = { kind: 'asking' };
     ctx.frame.set({ title: 'Data Atlas' });
     draw();
@@ -121,6 +135,7 @@ export default defineApp((ctx) => {
     const [answer, eye] = await Promise.all([ask<ThingView>(`${thingPath(at.id)}${from}`), ask<Following>(`/follows/${encodeURIComponent(at.id)}`)]);
     if (mine !== asking) return;
     thing = answer;
+    heldFor = at.id;
     following = eye.kind === 'answered' && eye.value.following;
     if (answer.kind === 'answered') ctx.frame.set({ title: answer.value.name });
     draw();
@@ -199,6 +214,11 @@ export default defineApp((ctx) => {
   function go(to: Route) {
     ctx.navigate(pathOf(to));
     arrive(pathOf(to));
+  }
+  // Back from a thing's map to its page, drawn from the answer the map was drawn from.
+  function backToPage() {
+    keep = true;
+    go({ kind: 'thing', id: here() });
   }
   function open(id: string) {
     go({ kind: 'thing', id });

@@ -238,12 +238,25 @@ describe('the app', () => {
     const { ctx, shell } = fakeShell(service, `/things/${heron.id}/map`);
     await start(ctx);
     await settle();
-    expect(shell.fetched).toEqual([`/api/${manifest.id}/v1/things/${heron.id}`]);
+    expect(shell.fetched).toEqual([`/api/${manifest.id}/v1/things/${heron.id}`, `/api/${manifest.id}/v1/follows/${heron.id}`]);
     const map = elements(shell.screen).find((e) => e.type === 'quill-thing-map')!;
     (map.props!.onBack as () => void)();
     await settle();
     expect(shell.navigated).toEqual([`/things/${heron.id}`]);
     expect(thingPage(shell.screen)).toBeDefined();
+    // Back from the map draws the page from the answer the map was drawn from.
+    expect(shell.fetched.filter((p) => p.endsWith(`/things/${heron.id}`))).toHaveLength(1);
+  });
+
+  it('says why when the map can’t be drawn, and tries again', async () => {
+    const { ctx, shell } = fakeShell(refusal(403, 'Data Atlas may not read the knowledge graph here.'), `/things/${heron.id}/map`);
+    await start(ctx);
+    await settle();
+    expect(text(shell.screen)).toContain('Data Atlas may not read the knowledge graph here.');
+    const state = elements(shell.screen).find((e) => e.type === 'quill-state')!;
+    (state.props!.onAction as () => void)();
+    await settle();
+    expect(shell.fetched.filter((p) => p.endsWith(`/things/${heron.id}`))).toHaveLength(2);
   });
 
   it('says why when a thing can’t be shown, with who can change it, and tries again', async () => {
